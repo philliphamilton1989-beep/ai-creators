@@ -20,6 +20,7 @@ export type SaveData = {
 	Heat: number,
 	GangId: string,
 	GangRank: string,
+	OwnedVehicles: { [string]: boolean },
 }
 
 local Persistence = {}
@@ -51,6 +52,7 @@ function Persistence.save(player: Player)
 		Heat = state.Heat,
 		GangId = state.GangId,
 		GangRank = state.GangRank,
+		OwnedVehicles = state.OwnedVehicles,
 	}
 
 	DataStoreRetry.run("SavePlayer " .. player.Name, function()

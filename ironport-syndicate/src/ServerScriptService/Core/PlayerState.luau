@@ -16,6 +16,7 @@ export type SavedFields = {
 	Heat: number?,
 	GangId: string?,
 	GangRank: string?,
+	OwnedVehicles: { [string]: boolean }?,
 }
 
 export type State = {
@@ -23,6 +24,7 @@ export type State = {
 	Heat: number,
 	GangId: string,
 	GangRank: string,
+	OwnedVehicles: { [string]: boolean },
 	IsDowned: boolean,
 	InSafehouse: boolean,
 	JoinedAt: number,
@@ -37,6 +39,7 @@ function PlayerState.init(player: Player, loaded: SavedFields?): State
 		Heat = (loaded and loaded.Heat) or 0,
 		GangId = (loaded and loaded.GangId) or "Neutral",
 		GangRank = (loaded and loaded.GangRank) or "Recruit",
+		OwnedVehicles = (loaded and loaded.OwnedVehicles) or {},
 		IsDowned = false,
 		InSafehouse = false,
 		JoinedAt = os.clock(),
@@ -65,6 +68,7 @@ function PlayerState.pushOwnerView(player: Player)
 		StreetCash = state.StreetCash,
 		GangId = state.GangId,
 		GangRank = state.GangRank,
+		OwnedVehicles = state.OwnedVehicles,
 	})
 end
 

@@ -36,7 +36,12 @@
         },
         "VehicleRemotes": {
           "$className": "Folder",
-          "RepairVehicleRemote": { "$className": "RemoteEvent" }
+          "PurchaseVehicleRemote": { "$className": "RemoteFunction" },
+          "SpawnVehicleRemote": { "$className": "RemoteFunction" },
+          "DespawnVehicleRemote": { "$className": "RemoteFunction" },
+          "RepairVehicleRemote": { "$className": "RemoteFunction" },
+          "LockVehicleRemote": { "$className": "RemoteFunction" },
+          "VehicleStateRemote": { "$className": "RemoteEvent" }
         },
         "EconomyRemotes": {
           "$className": "Folder",
@@ -72,7 +77,12 @@
       "Defense": { "$path": "src/ServerScriptService/Defense" },
       "Economy": { "$path": "src/ServerScriptService/Economy" },
       "Factions": { "$path": "src/ServerScriptService/Factions" },
-      "Heists": { "$path": "src/ServerScriptService/Heists" }
+      "Heists": { "$path": "src/ServerScriptService/Heists" },
+      "Vehicles": { "$path": "src/ServerScriptService/Vehicles" }
+    },
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "VehicleModels": { "$className": "Folder" }
     },
     "StarterPlayer": {
       "$className": "StarterPlayer",

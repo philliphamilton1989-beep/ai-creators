@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PlayerState = require(script.Parent:WaitForChild("PlayerState"))
 local Persistence = require(script.Parent:WaitForChild("Persistence"))
 local FactionService = require(script.Parent.Parent:WaitForChild("Factions"):WaitForChild("FactionService"))
+local VehicleService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
 local GameConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("GameConfig"))
 
 Players.PlayerAdded:Connect(function(player)
@@ -25,6 +26,7 @@ Players.PlayerAdded:Connect(function(player)
 	-- connection: crew state can only be resolved once PlayerState exists, and
 	-- connection ordering between two scripts isn't guaranteed.
 	FactionService.onPlayerReady(player)
+	VehicleService.onPlayerReady(player)
 end)
 
 Players.PlayerRemoving:Connect(function(player)

@@ -15,4 +15,5 @@ require(script.Parent.Parent:WaitForChild("Economy"):WaitForChild("LaunderingSer
 require(script.Parent.Parent:WaitForChild("Heists"):WaitForChild("HeistService"))
 require(factions:WaitForChild("FactionService"))
 require(factions:WaitForChild("TerritoryService"))
+require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
 require(script.Parent:WaitForChild("HeatService"))

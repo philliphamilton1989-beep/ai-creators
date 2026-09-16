@@ -24,6 +24,7 @@ local WeaponConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChi
 local DamageService = require(script.Parent:WaitForChild("DamageService"))
 local PlayerState = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("PlayerState"))
 local HeatService = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("HeatService"))
+local VehicleService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local fireEvent = remotes:WaitForChild("CombatRemotes"):WaitForChild("FireWeaponRemote") :: RemoteEvent
@@ -91,11 +92,22 @@ fireEvent.OnServerEvent:Connect(function(player: Player, weaponId: string, claim
 
 	local result = Workspace:Raycast(serverOrigin, direction.Unit * stats.Range, rayParams)
 	if result and result.Instance then
-		local hitHumanoid = result.Instance:FindFirstAncestorOfClass("Humanoid")
+		-- A Humanoid is a SIBLING of the body parts, both children of the
+		-- character Model — never an ancestor of them. Walking the ancestor
+		-- chain looking for a Humanoid always returns nil, so look up the Model
+		-- and then down to its Humanoid.
+		local hitModel = result.Instance:FindFirstAncestorOfClass("Model")
+		local hitHumanoid = hitModel and hitModel:FindFirstChildOfClass("Humanoid")
+
 		if hitHumanoid then
 			local isHeadshot = result.Instance.Name == "Head"
 			local damage = stats.Damage * (isHeadshot and stats.HeadshotMultiplier or 1)
 			DamageService.processDamage(hitHumanoid, damage, player, isHeadshot)
+		else
+			local vehicle = VehicleService.findVehicleFromPart(result.Instance)
+			if vehicle then
+				VehicleService.applyDamage(vehicle, stats.Damage, player)
+			end
 		end
 	end
 
