@@ -317,7 +317,7 @@ purchaseRemote.OnServerInvoke = function(player: Player, vehicleId: string): (bo
 
 	cash.Value -= stats.PurchaseCostCleanCash
 	state.OwnedVehicles[vehicleId] = true
-	PlayerState.pushOwnerView(player)
+	PlayerState.pushInventory(player)
 
 	return true, "Purchased"
 end
@@ -491,8 +491,10 @@ function VehicleService.onPlayerReady(player: Player)
 	local starter = VehicleConfig.StarterVehicleId
 	if not state.OwnedVehicles[starter] then
 		state.OwnedVehicles[starter] = true
-		PlayerState.pushOwnerView(player)
 	end
+	-- Pushed unconditionally: a returning player who already owns everything
+	-- still needs their inventory on arrival, not only when it changes.
+	PlayerState.pushInventory(player)
 end
 
 Players.PlayerRemoving:Connect(function(player)

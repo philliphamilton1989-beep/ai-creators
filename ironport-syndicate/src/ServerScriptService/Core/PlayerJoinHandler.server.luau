@@ -12,8 +12,24 @@ local GameConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild
 -- spending all of it waiting on stragglers.
 local SHUTDOWN_SAVE_DEADLINE_SECONDS = 20
 
+-- Matches FactionService's flush cadence. Without it, player data only reached
+-- the DataStore on leave, so a hard crash (where BindToClose never runs) lost
+-- the whole session — and worse, crew donations flushed on a timer while the
+-- Clean Cash that paid for them did not, which duplicates money across the crew
+-- boundary on a crash.
+local AUTOSAVE_INTERVAL_SECONDS = 60
+
 Players.PlayerAdded:Connect(function(player)
 	local saved = Persistence.load(player)
+
+	-- Persistence.load yields, potentially for seconds of retry backoff. If the
+	-- player left during it, PlayerRemoving has already run its release, and
+	-- carrying on here would re-populate the state table afterwards — leaking an
+	-- entry and a strong Player reference for the life of the server, and doing
+	-- a crew read and a starter-vehicle grant for someone who is gone.
+	if not player:IsDescendantOf(Players) then
+		return
+	end
 
 	local leaderstats = Instance.new("Folder")
 	leaderstats.Name = "leaderstats"
@@ -41,6 +57,15 @@ Players.PlayerRemoving:Connect(function(player)
 	Persistence.save(player)
 	FactionService.onPlayerLeaving(player)
 	PlayerState.release(player)
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(AUTOSAVE_INTERVAL_SECONDS)
+		for _, player in Players:GetPlayers() do
+			task.spawn(Persistence.save, player)
+		end
+	end
 end)
 
 -- Saves run in parallel, not serially. Each save can spend seconds in DataStore

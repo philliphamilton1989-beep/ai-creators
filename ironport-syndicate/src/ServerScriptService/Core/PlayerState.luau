@@ -9,7 +9,9 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
-local stateUpdateRemote = remotes:WaitForChild("CoreRemotes"):WaitForChild("PlayerStateUpdateRemote") :: RemoteEvent
+local coreRemotes = remotes:WaitForChild("CoreRemotes")
+local stateUpdateRemote = coreRemotes:WaitForChild("PlayerStateUpdateRemote") :: RemoteEvent
+local inventoryUpdateRemote = coreRemotes:WaitForChild("InventoryUpdateRemote") :: RemoteEvent
 
 export type SavedFields = {
 	StreetCash: number?,
@@ -51,7 +53,12 @@ function PlayerState.init(player: Player, loaded: SavedFields?): State
 		Heat = (loaded and loaded.Heat) or 0,
 		GangId = (loaded and loaded.GangId) or "Neutral",
 		GangRank = (loaded and loaded.GangRank) or "Recruit",
-		OwnedVehicles = (loaded and loaded.OwnedVehicles) or {},
+		-- Type-guarded rather than trusted: Persistence raw-casts whatever the
+		-- DataStore hands back, so a legacy or malformed entry here would make
+		-- the first OwnedVehicles[id] = true throw.
+		OwnedVehicles = if loaded and typeof(loaded.OwnedVehicles) == "table"
+			then loaded.OwnedVehicles :: { [string]: boolean }
+			else {},
 		EquippedWeaponId = "Sidearm",
 		IsDowned = false,
 		InSafehouse = false,
@@ -94,6 +101,18 @@ function PlayerState.pushOwnerView(player: Player)
 		StreetCash = state.StreetCash,
 		GangId = state.GangId,
 		GangRank = state.GangRank,
+	})
+end
+
+-- Inventory travels on its own remote. It used to ride along with the state
+-- push, which the Heat decay loop fires once a second per player — so a set that
+-- only changes on purchase was being re-sent continuously.
+function PlayerState.pushInventory(player: Player)
+	local state = states[player]
+	if not state then
+		return
+	end
+	inventoryUpdateRemote:FireClient(player, {
 		OwnedVehicles = state.OwnedVehicles,
 	})
 end

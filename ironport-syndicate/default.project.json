@@ -10,7 +10,8 @@
         "$className": "Folder",
         "CoreRemotes": {
           "$className": "Folder",
-          "PlayerStateUpdateRemote": { "$className": "RemoteEvent" }
+          "PlayerStateUpdateRemote": { "$className": "RemoteEvent" },
+          "InventoryUpdateRemote": { "$className": "RemoteEvent" }
         },
         "CombatRemotes": {
           "$className": "Folder",
