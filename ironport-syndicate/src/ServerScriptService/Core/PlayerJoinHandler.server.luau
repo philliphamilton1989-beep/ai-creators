@@ -30,10 +30,12 @@ Players.PlayerAdded:Connect(function(player)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
-	-- Ordering matters: the crew flush reads the player's crew out of
-	-- PlayerState, so it has to happen before the state is released.
-	FactionService.onPlayerLeaving(player)
+	-- The player's own save goes first: the crew flush can yield for seconds of
+	-- DataStore retry backoff, and on shutdown that delay could cost them their
+	-- save entirely. The only real constraint is that the crew flush happens
+	-- before PlayerState.release, since it reads their crew out of it.
 	Persistence.save(player)
+	FactionService.onPlayerLeaving(player)
 	PlayerState.release(player)
 end)
 

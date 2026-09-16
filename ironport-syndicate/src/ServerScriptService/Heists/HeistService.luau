@@ -48,10 +48,16 @@ local activeHeists: { [string]: HeistInstance } = {}
 local lastEndedAt: { [string]: number } = {}
 local warnedMissingAnchor: { [string]: true } = {}
 
+-- Checked rather than cast: a VaultDoor that isn't a BasePart would throw on
+-- .Position deep inside a remote handler instead of failing the lookup cleanly.
 local function getSiteAnchor(siteId: string): BasePart?
 	local sitesFolder = Workspace:FindFirstChild("HeistSites")
 	local siteModel = sitesFolder and sitesFolder:FindFirstChild(siteId)
-	return siteModel and (siteModel:FindFirstChild("VaultDoor") :: BasePart?)
+	local door = siteModel and siteModel:FindFirstChild("VaultDoor")
+	if door and door:IsA("BasePart") then
+		return door
+	end
+	return nil
 end
 
 local function warnMissingAnchorOnce(siteId: string)

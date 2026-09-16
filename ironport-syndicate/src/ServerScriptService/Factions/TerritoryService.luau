@@ -41,7 +41,9 @@ type NodeState = {
 local TerritoryService = {}
 
 local nodes: { [string]: NodeState } = {}
-local warnedMissingZone = false
+-- Per node, not one module-wide flag: a single misconfigured node must not
+-- silence the diagnostic for every other broken one.
+local warnedMissingZone: { [string]: true } = {}
 
 for nodeId in FactionConfig.Territory do
 	nodes[nodeId] = {
@@ -52,10 +54,17 @@ for nodeId in FactionConfig.Territory do
 	}
 end
 
+-- Checked rather than cast: a CaptureZone that is a Model or Folder would reach
+-- zone.CFrame and throw inside the Heartbeat handler, aborting the tick for
+-- every other node once a second.
 local function getCaptureZone(nodeId: string): BasePart?
 	local folder = Workspace:FindFirstChild("TerritoryNodes")
 	local nodeModel = folder and folder:FindFirstChild(nodeId)
-	return nodeModel and (nodeModel:FindFirstChild("CaptureZone") :: BasePart?)
+	local zone = nodeModel and nodeModel:FindFirstChild("CaptureZone")
+	if zone and zone:IsA("BasePart") then
+		return zone
+	end
+	return nil
 end
 
 local function isInsideZone(zone: BasePart, position: Vector3): boolean
@@ -109,9 +118,13 @@ end
 local function advanceNode(nodeId: string, node: NodeState, dt: number): boolean
 	local zone = getCaptureZone(nodeId)
 	if not zone then
-		if not warnedMissingZone then
-			warnedMissingZone = true
-			warn("TerritoryService: no Workspace.TerritoryNodes.<id>.CaptureZone parts found — capture is idle until the level is built")
+		if not warnedMissingZone[nodeId] then
+			warnedMissingZone[nodeId] = true
+			warn(
+				("TerritoryService: no BasePart at Workspace.TerritoryNodes.%s.CaptureZone — this node is idle until the level provides one"):format(
+					nodeId
+				)
+			)
 		end
 		return false
 	end
@@ -168,6 +181,21 @@ local function advanceNode(nodeId: string, node: NodeState, dt: number): boolean
 		or node.CapturingCrewId ~= previousCapturing
 		or node.Contested ~= wasContested
 end
+
+-- A disbanded crew's turf goes neutral. Without this, the node keeps paying a
+-- dead crew id: every minute queues a delta whose write is discarded, and the
+-- node keeps broadcasting an owner that no longer exists.
+FactionService.onCrewDisbanded(function(crewId: string)
+	for nodeId, node in nodes do
+		if node.OwnerCrewId == crewId then
+			node.OwnerCrewId = nil
+			node.CapturingCrewId = nil
+			node.Progress = 0
+			node.Contested = false
+			broadcastNode(nodeId, node)
+		end
+	end
+end)
 
 local function payIncome()
 	for nodeId, node in nodes do

@@ -27,14 +27,43 @@ FactionController.Territory = {} :: { [string]: Payload }
 -- Fires whenever any of the above changes, so UI can redraw without polling.
 FactionController.Changed = Instance.new("BindableEvent")
 
+-- Identifies which invite a pending expiry timer belongs to, so a stale timer
+-- can't clear a newer invite that arrived after it.
+local inviteToken = 0
+
+function FactionController.clearPendingInvite()
+	if FactionController.PendingInvite then
+		FactionController.PendingInvite = nil
+		FactionController.Changed:Fire("Invite")
+	end
+end
+
 crewUpdateRemote.OnClientEvent:Connect(function(payload: Payload)
 	FactionController.Crew = if payload and payload.CrewId then payload else nil
+	-- Joining a crew resolves any outstanding invite.
+	if FactionController.Crew then
+		FactionController.clearPendingInvite()
+	end
 	FactionController.Changed:Fire("Crew")
 end)
 
 crewInviteRemote.OnClientEvent:Connect(function(payload: Payload)
 	FactionController.PendingInvite = payload
 	FactionController.Changed:Fire("Invite")
+
+	-- The server drops the invite on expiry, so holding the prompt open past
+	-- that point only offers an action that now returns "NoInvite".
+	local expiresIn = tonumber(payload and payload.ExpiresInSeconds)
+	if not expiresIn then
+		return
+	end
+	inviteToken += 1
+	local token = inviteToken
+	task.delay(expiresIn, function()
+		if token == inviteToken then
+			FactionController.clearPendingInvite()
+		end
+	end)
 end)
 
 territoryUpdateRemote.OnClientEvent:Connect(function(payload: Payload)

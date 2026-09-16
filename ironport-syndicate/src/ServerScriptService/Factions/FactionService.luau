@@ -12,8 +12,16 @@
 --    timer. Using UpdateAsync with deltas means two servers crediting the
 --    same crew add up instead of overwriting each other.
 --
--- Known limit: a roster read can be up to one flush interval stale relative to
--- another server. Membership changes are immediate; treasury totals lag.
+-- Known limits, both bounded by REVALIDATE_INTERVAL_SECONDS rather than
+-- eliminated. A membership change made in another server does not reach this
+-- one until the next revalidation pass, so a player kicked elsewhere keeps
+-- crewmate protections here until then; and treasury totals seen in another
+-- server lag by up to one flush interval.
+--
+-- The load path is deliberately paranoid about one thing: clearing a player's
+-- crew is destructive and permanent (Persistence writes it out), so it only
+-- ever happens on a definitive answer from the DataStore. An inconclusive read
+-- leaves membership untouched.
 
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
@@ -42,6 +50,7 @@ local crewStore = DataStoreService:GetDataStore("IronportSyndicate_Crews_v1")
 local NEUTRAL = "Neutral"
 local BOSS_RANK = "Boss"
 local FLUSH_INTERVAL_SECONDS = 60
+local REVALIDATE_INTERVAL_SECONDS = 60
 
 -- Members are keyed by tostring(userId): DataStore serialises to JSON, where
 -- number keys are not safe to round-trip.
@@ -156,20 +165,46 @@ local function writeCrew(crewId: string, mutator: (Crew?) -> Crew?): (boolean, C
 	end)
 end
 
-local function loadCrew(crewId: string): Crew?
-	local cached = crews[crewId]
-	if cached then
-		return cached
+-- "missing" means the DataStore answered and the crew is not there. "unavailable"
+-- means we never got an answer. Conflating the two is how a transient outage
+-- turns into every affected player permanently losing their crew.
+type LoadStatus = "ok" | "missing" | "unavailable"
+
+local function loadCrew(crewId: string, forceRefresh: boolean?): (Crew?, LoadStatus)
+	if not forceRefresh then
+		local cached = crews[crewId]
+		if cached then
+			return cached, "ok"
+		end
 	end
+
 	local ok, stored = DataStoreRetry.run("LoadCrew " .. crewId, function()
 		return crewStore:GetAsync(crewKey(crewId))
 	end)
-	if not ok or not stored then
-		return nil
+	if not ok then
+		return nil, "unavailable"
 	end
+	if not stored then
+		return nil, "missing"
+	end
+
 	local crew = stored :: Crew
 	crews[crewId] = crew
-	return crew
+	return crew, "ok"
+end
+
+local disbandListeners: { (crewId: string) -> () } = {}
+
+-- Lets TerritoryService release a disbanded crew's turf without requiring this
+-- module to know about territory (it already depends on this one).
+function FactionService.onCrewDisbanded(listener: (crewId: string) -> ())
+	table.insert(disbandListeners, listener)
+end
+
+local function notifyDisbanded(crewId: string)
+	for _, listener in disbandListeners do
+		task.spawn(listener, crewId)
+	end
 end
 
 local function onlineMembers(crew: Crew): { Player }
@@ -222,6 +257,59 @@ local function syncPlayerToCrew(player: Player, crew: Crew?)
 		state.GangRank = FactionConfig.RankLadder[1].Rank
 	end
 	PlayerState.pushOwnerView(player)
+end
+
+-- Installs a freshly written/read crew record as the cached copy, repairing two
+-- things the raw snapshot gets wrong:
+--
+--  * Deltas that accrued while UpdateAsync was yielding were applied to the
+--    table being replaced. They're still queued for persistence, but dropping
+--    them from memory makes the live treasury and ranks visibly regress.
+--  * Every online member's PlayerState still carries their pre-write rank. That
+--    is what left a promoted Boss unable to invite or kick until they rejoined.
+local function adoptCrewRecord(crewId: string, updated: Crew)
+	local pending = pendingDeltas[crewId]
+	if pending then
+		updated.Treasury += pending.Treasury
+		for userIdStr, amount in pending.Contribution do
+			local member = updated.Members[userIdStr]
+			if member then
+				member.Contribution += amount
+				if updated.OwnerUserId ~= tonumber(userIdStr) then
+					member.Rank = rankForContribution(member.Contribution)
+				end
+			end
+		end
+	end
+
+	crews[crewId] = updated
+
+	-- Anyone here who is no longer in the roster was removed from another
+	-- server; anyone still in it may have changed rank.
+	for _, player in Players:GetPlayers() do
+		local state = PlayerState.get(player)
+		if state and state.GangId == crewId then
+			if updated.Members[tostring(player.UserId)] then
+				syncPlayerToCrew(player, updated)
+			else
+				syncPlayerToCrew(player, nil)
+				crewUpdateRemote:FireClient(player, { CrewId = nil })
+			end
+		end
+	end
+end
+
+local function releaseCrewLocally(crewId: string)
+	crews[crewId] = nil
+	pendingDeltas[crewId] = nil
+	for _, player in Players:GetPlayers() do
+		local state = PlayerState.get(player)
+		if state and state.GangId == crewId then
+			syncPlayerToCrew(player, nil)
+			crewUpdateRemote:FireClient(player, { CrewId = nil })
+		end
+	end
+	notifyDisbanded(crewId)
 end
 
 -- Runs the crew name through Roblox text filtering before it is ever shown to
@@ -306,9 +394,24 @@ function FactionService.onPlayerReady(player: Player)
 		return
 	end
 
-	local crew = loadCrew(state.GangId)
+	-- Forced refresh: this server's cache can predate the player joining the
+	-- crew in another server, and a stale miss here would clear their
+	-- membership permanently.
+	local crew, status = loadCrew(state.GangId, true)
+
+	if status == "unavailable" then
+		-- We don't actually know anything. Leave their membership alone — a
+		-- DataStore blip must not cost someone their crew.
+		warn(
+			("FactionService: could not verify crew for %s; leaving membership as-is for this session"):format(
+				player.Name
+			)
+		)
+		return
+	end
+
 	if not crew or not crew.Members[tostring(player.UserId)] then
-		-- Crew disbanded, or they were kicked while offline.
+		-- Definitive answer: the crew is gone, or they were removed while offline.
 		syncPlayerToCrew(player, nil)
 		return
 	end
@@ -327,7 +430,9 @@ end
 
 --[[ Remote handlers ]]
 
-createCrewRemote.OnServerInvoke = function(player: Player, rawName: string): (boolean, string)
+local creationInFlight: { [Player]: true } = {}
+
+local function createCrew(player: Player, rawName: string): (boolean, string)
 	if typeof(rawName) ~= "string" then
 		return false, "InvalidName"
 	end
@@ -367,6 +472,12 @@ createCrewRemote.OnServerInvoke = function(player: Player, rawName: string): (bo
 		Treasury = 0,
 	}
 
+	-- Balance is re-checked here because filtering the name yielded, and a
+	-- vehicle purchase or donation may have spent the money in the meantime.
+	if cash.Value < FactionConfig.CreationCostCleanCash then
+		return false, "CannotAfford"
+	end
+
 	local ok, stored = DataStoreRetry.run("CreateCrew " .. crewId, function()
 		return crewStore:UpdateAsync(crewKey(crewId), function(existing: Crew?): Crew
 			return existing or crew
@@ -376,6 +487,15 @@ createCrewRemote.OnServerInvoke = function(player: Player, rawName: string): (bo
 		return false, "SaveFailed" -- nothing charged; they can retry
 	end
 
+	-- UpdateAsync yielded too. If the balance went out from under us, undo the
+	-- write rather than leaving an orphaned crew nobody paid for.
+	if cash.Value < FactionConfig.CreationCostCleanCash then
+		DataStoreRetry.run("RollbackCrew " .. crewId, function()
+			crewStore:RemoveAsync(crewKey(crewId))
+		end)
+		return false, "CannotAfford"
+	end
+
 	local created = stored :: Crew
 	cash.Value -= FactionConfig.CreationCostCleanCash
 	crews[crewId] = created
@@ -383,6 +503,26 @@ createCrewRemote.OnServerInvoke = function(player: Player, rawName: string): (bo
 	crewUpdateRemote:FireClient(player, rosterPayload(created))
 
 	return true, "CrewCreated"
+end
+
+-- Serialised per player: createCrew yields twice (text filter, then the write)
+-- between checking the balance and debiting it, so two rapid invokes would both
+-- pass the check and both charge. The pcall also keeps the flag from leaking if
+-- the body errors.
+createCrewRemote.OnServerInvoke = function(player: Player, rawName: string): (boolean, string)
+	if creationInFlight[player] then
+		return false, "CreationInProgress"
+	end
+	creationInFlight[player] = true
+
+	local ok, success, reason = pcall(createCrew, player, rawName)
+	creationInFlight[player] = nil
+
+	if not ok then
+		warn(("FactionService: createCrew failed for %s: %s"):format(player.Name, tostring(success)))
+		return false, "CreateFailed"
+	end
+	return success :: boolean, reason :: string
 end
 
 inviteRemote.OnServerInvoke = function(player: Player, targetUserId: number): (boolean, string)
@@ -476,8 +616,7 @@ respondToInviteRemote.OnServerInvoke = function(player: Player, accept: boolean)
 		return false, "JoinFailed"
 	end
 
-	crews[invite.CrewId] = updated
-	syncPlayerToCrew(player, updated)
+	adoptCrewRecord(invite.CrewId, updated)
 	pushCrewToMembers(updated)
 
 	return true, "JoinedCrew"
@@ -533,13 +672,12 @@ leaveCrewRemote.OnServerInvoke = function(player: Player): (boolean, string)
 		-- Last one out disbands the crew. This needs RemoveAsync: returning nil
 		-- from an UpdateAsync transform cancels the write, it doesn't delete
 		-- the key, which would leave an empty crew behind forever.
-		crews[crewId] = nil
-		pendingDeltas[crewId] = nil
 		DataStoreRetry.run("DisbandCrew " .. crewId, function()
 			crewStore:RemoveAsync(crewKey(crewId))
 		end)
+		releaseCrewLocally(crewId)
 	else
-		crews[crewId] = updated :: Crew
+		adoptCrewRecord(crewId, updated :: Crew)
 		pushCrewToMembers(updated :: Crew)
 	end
 
@@ -585,13 +723,11 @@ kickMemberRemote.OnServerInvoke = function(player: Player, targetUserId: number)
 		return false, "KickFailed"
 	end
 
-	crews[crewId] = updated
-
-	local target = Players:GetPlayerByUserId(targetUserId)
-	if target then
-		syncPlayerToCrew(target, nil)
-		crewUpdateRemote:FireClient(target, { CrewId = nil })
-	end
+	-- adoptCrewRecord clears anyone here who is no longer in the roster, which
+	-- covers the kicked player when they're in this server. A target online in
+	-- another server keeps crewmate protections until that server's next
+	-- revalidation pass.
+	adoptCrewRecord(crewId, updated)
 	pushCrewToMembers(updated)
 
 	return true, "MemberKicked"
@@ -657,10 +793,39 @@ local function flushAllPending()
 	end
 end
 
+-- Membership changed in another server reaches this one no other way, so crews
+-- with players here are periodically re-read. Flush first so our own accrued
+-- deltas are part of the record we read back.
+local function revalidateOnlineCrews()
+	local seen: { [string]: true } = {}
+	for _, player in Players:GetPlayers() do
+		local crewId = FactionService.getCrewIdOf(player)
+		if crewId and not seen[crewId] then
+			seen[crewId] = true
+			flushCrew(crewId)
+
+			local crew, status = loadCrew(crewId, true)
+			if status == "missing" then
+				releaseCrewLocally(crewId)
+			elseif crew then
+				adoptCrewRecord(crewId, crew)
+			end
+			-- "unavailable" deliberately changes nothing.
+		end
+	end
+end
+
 task.spawn(function()
 	while true do
 		task.wait(FLUSH_INTERVAL_SECONDS)
 		flushAllPending()
+	end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(REVALIDATE_INTERVAL_SECONDS)
+		revalidateOnlineCrews()
 	end
 end)
 
