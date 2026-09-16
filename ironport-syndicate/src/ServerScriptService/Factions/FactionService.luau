@@ -114,12 +114,6 @@ local function rankForContribution(contribution: number): string
 	return earned
 end
 
-local function cleanCashValue(player: Player): IntValue?
-	local leaderstats = player:FindFirstChild("leaderstats")
-	local value = leaderstats and leaderstats:FindFirstChild("Clean Cash")
-	return value and (value :: IntValue) or nil
-end
-
 local function queueDelta(crewId: string): PendingDelta
 	local pending = pendingDeltas[crewId]
 	if not pending then
@@ -475,11 +469,11 @@ local function createCrew(player: Player, rawName: string): (boolean, string)
 		return false, "AlreadyInCrew"
 	end
 
-	local cash = cleanCashValue(player)
-	if not cash then
+	if not PlayerState.get(player) then
 		return false, "PlayerUnavailable"
 	end
-	if cash.Value < FactionConfig.CreationCostCleanCash then
+	-- Early feedback only. The spend that counts happens after both yields below.
+	if PlayerState.getCleanCash(player) < FactionConfig.CreationCostCleanCash then
 		return false, "CannotAfford"
 	end
 
@@ -503,12 +497,6 @@ local function createCrew(player: Player, rawName: string): (boolean, string)
 		Treasury = 0,
 	}
 
-	-- Balance is re-checked here because filtering the name yielded, and a
-	-- vehicle purchase or donation may have spent the money in the meantime.
-	if cash.Value < FactionConfig.CreationCostCleanCash then
-		return false, "CannotAfford"
-	end
-
 	local ok, stored = DataStoreRetry.run("CreateCrew " .. crewId, function()
 		return crewStore:UpdateAsync(crewKey(crewId), function(existing: Crew?): Crew
 			return existing or crew
@@ -518,9 +506,12 @@ local function createCrew(player: Player, rawName: string): (boolean, string)
 		return false, "SaveFailed" -- nothing charged; they can retry
 	end
 
-	-- UpdateAsync yielded too. If the balance went out from under us, undo the
-	-- write rather than leaving an orphaned crew nobody paid for.
-	if cash.Value < FactionConfig.CreationCostCleanCash then
+	-- One atomic spend, after every yield. The filter and the write both yielded,
+	-- so a vehicle purchase or donation may have taken the money in between —
+	-- and an atomic check-and-debit is the only thing that reliably catches that.
+	-- If it fails, undo the write rather than leaving an orphaned crew nobody
+	-- paid for.
+	if not PlayerState.trySpendCleanCash(player, FactionConfig.CreationCostCleanCash) then
 		DataStoreRetry.run("RollbackCrew " .. crewId, function()
 			crewStore:RemoveAsync(crewKey(crewId))
 		end)
@@ -528,7 +519,6 @@ local function createCrew(player: Player, rawName: string): (boolean, string)
 	end
 
 	local created = stored :: Crew
-	cash.Value -= FactionConfig.CreationCostCleanCash
 	crews[crewId] = created
 	syncPlayerToCrew(player, created)
 	crewUpdateRemote:FireClient(player, rosterPayload(created))
@@ -779,12 +769,10 @@ donateRemote.OnServerInvoke = function(player: Player, rawAmount: number): (bool
 		return false, "CrewUnavailable"
 	end
 
-	local cash = cleanCashValue(player)
-	if not cash or cash.Value < amount then
+	if not PlayerState.trySpendCleanCash(player, amount) then
 		return false, "CannotAfford"
 	end
 
-	cash.Value -= amount
 	crew.Treasury += amount
 
 	local userIdStr = tostring(player.UserId)

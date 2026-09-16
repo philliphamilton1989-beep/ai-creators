@@ -46,11 +46,7 @@ launderRemote.OnServerInvoke = function(player: Player, rawAmount: number): (boo
 			return
 		end
 
-		local leaderstats = player:FindFirstChild("leaderstats")
-		local cleanCash = leaderstats and leaderstats:FindFirstChild("Clean Cash") :: IntValue?
-		if cleanCash then
-			cleanCash.Value += math.floor(amount * GameConfig.Laundering.ConversionRate)
-		end
+		PlayerState.addCleanCash(player, math.floor(amount * GameConfig.Laundering.ConversionRate))
 	end)
 
 	return true, "CycleStarted"

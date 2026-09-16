@@ -1,12 +1,10 @@
 --!strict
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PlayerState = require(script.Parent:WaitForChild("PlayerState"))
 local Persistence = require(script.Parent:WaitForChild("Persistence"))
 local FactionService = require(script.Parent.Parent:WaitForChild("Factions"):WaitForChild("FactionService"))
 local VehicleService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
-local GameConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("GameConfig"))
 
 -- BindToClose gets a limited window from Roblox; leave headroom rather than
 -- spending all of it waiting on stragglers.
@@ -31,15 +29,8 @@ Players.PlayerAdded:Connect(function(player)
 		return
 	end
 
-	local leaderstats = Instance.new("Folder")
-	leaderstats.Name = "leaderstats"
-	leaderstats.Parent = player
-
-	local cleanCash = Instance.new("IntValue")
-	cleanCash.Name = "Clean Cash"
-	cleanCash.Value = (saved and saved.CleanCash) or GameConfig.StartingCleanCash
-	cleanCash.Parent = leaderstats
-
+	-- PlayerState owns the balance and creates the leaderstats mirror itself, so
+	-- there's no window where one exists without the other.
 	PlayerState.init(player, saved)
 
 	-- Called explicitly rather than from FactionService's own PlayerAdded

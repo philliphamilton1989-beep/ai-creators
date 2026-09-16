@@ -5,6 +5,18 @@
 -- Street Cash to every other player in the server and kill the stealth/heist
 -- tension. Updates are pushed only to the owning client, over
 -- PlayerStateUpdateRemote:FireClient.
+--
+-- Clean Cash lives here too, and the leaderstats IntValue is a VIEW of it, not
+-- the other way round. It used to be the reverse: every system that spent money
+-- reached into leaderstats and mutated the Instance, and Persistence read the
+-- balance back out of it at save time — so a missing Instance silently skipped
+-- the whole save, including unrelated fields. Spending also went through a
+-- read-then-write pair that callers had to keep atomic themselves, which is
+-- exactly the shape that produced the crew-creation double-charge.
+--
+-- So: mutate Clean Cash only through addCleanCash / trySpendCleanCash, never by
+-- touching leaderstats. trySpendCleanCash checks and debits with no yield
+-- between, which is the property callers actually need.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -13,7 +25,10 @@ local coreRemotes = remotes:WaitForChild("CoreRemotes")
 local stateUpdateRemote = coreRemotes:WaitForChild("PlayerStateUpdateRemote") :: RemoteEvent
 local inventoryUpdateRemote = coreRemotes:WaitForChild("InventoryUpdateRemote") :: RemoteEvent
 
+local GameConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("GameConfig"))
+
 export type SavedFields = {
+	CleanCash: number?,
 	StreetCash: number?,
 	Heat: number?,
 	GangId: string?,
@@ -24,6 +39,7 @@ export type SavedFields = {
 }
 
 export type State = {
+	CleanCash: number,
 	StreetCash: number,
 	Heat: number,
 	GangId: string,
@@ -47,8 +63,32 @@ export type State = {
 local PlayerState = {}
 local states: { [Player]: State } = {}
 
+-- Mirrors the authoritative balance onto the Roblox leaderboard. Created here so
+-- one place guarantees the Instance and the state can't drift apart.
+local function syncCleanCashView(player: Player, cleanCash: number)
+	local leaderstats = player:FindFirstChild("leaderstats")
+	if not leaderstats then
+		local folder = Instance.new("Folder")
+		folder.Name = "leaderstats"
+		folder.Parent = player
+		leaderstats = folder
+	end
+
+	local existing = leaderstats:FindFirstChild("Clean Cash")
+	if existing and existing:IsA("IntValue") then
+		existing.Value = cleanCash
+		return
+	end
+
+	local value = Instance.new("IntValue")
+	value.Name = "Clean Cash"
+	value.Value = cleanCash
+	value.Parent = leaderstats
+end
+
 function PlayerState.init(player: Player, loaded: SavedFields?): State
 	local state: State = {
+		CleanCash = (loaded and loaded.CleanCash) or GameConfig.StartingCleanCash,
 		StreetCash = (loaded and loaded.StreetCash) or 0,
 		Heat = (loaded and loaded.Heat) or 0,
 		GangId = (loaded and loaded.GangId) or "Neutral",
@@ -67,8 +107,37 @@ function PlayerState.init(player: Player, loaded: SavedFields?): State
 		LastRaidedAt = (loaded and loaded.LastRaidedAt) or 0,
 	}
 	states[player] = state
+	syncCleanCashView(player, state.CleanCash)
 	PlayerState.pushOwnerView(player)
 	return state
+end
+
+function PlayerState.getCleanCash(player: Player): number
+	local state = states[player]
+	return state and state.CleanCash or 0
+end
+
+function PlayerState.addCleanCash(player: Player, amount: number)
+	local state = states[player]
+	if not state or amount <= 0 then
+		return
+	end
+	state.CleanCash += amount
+	syncCleanCashView(player, state.CleanCash)
+end
+
+-- Checks affordability and debits in one step, with no yield in between, so two
+-- concurrent spends can't both pass the check. Callers that yield before
+-- committing (a text filter, a DataStore write) must call this AFTER the yield,
+-- not before it.
+function PlayerState.trySpendCleanCash(player: Player, amount: number): boolean
+	local state = states[player]
+	if not state or amount <= 0 or state.CleanCash < amount then
+		return false
+	end
+	state.CleanCash -= amount
+	syncCleanCashView(player, state.CleanCash)
+	return true
 end
 
 function PlayerState.get(player: Player): State?

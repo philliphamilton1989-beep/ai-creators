@@ -58,12 +58,6 @@ local function warnOnce(key: string, message: string)
 	warn("VehicleService: " .. message)
 end
 
-local function cleanCashValue(player: Player): IntValue?
-	local leaderstats = player:FindFirstChild("leaderstats")
-	local value = leaderstats and leaderstats:FindFirstChild("Clean Cash")
-	return value and (value :: IntValue) or nil
-end
-
 local function characterRoot(player: Player): BasePart?
 	local char = player.Character
 	return char and (char:FindFirstChild("HumanoidRootPart") :: BasePart?)
@@ -310,12 +304,10 @@ purchaseRemote.OnServerInvoke = function(player: Player, vehicleId: string): (bo
 		return false, "AlreadyOwned"
 	end
 
-	local cash = cleanCashValue(player)
-	if not cash or cash.Value < stats.PurchaseCostCleanCash then
+	if not PlayerState.trySpendCleanCash(player, stats.PurchaseCostCleanCash) then
 		return false, "CannotAfford"
 	end
 
-	cash.Value -= stats.PurchaseCostCleanCash
 	state.OwnedVehicles[vehicleId] = true
 	PlayerState.pushInventory(player)
 
@@ -430,12 +422,10 @@ repairRemote.OnServerInvoke = function(player: Player): (boolean, string)
 	end
 
 	local cost = math.ceil(missing * stats.RepairCostPerHealth)
-	local cash = cleanCashValue(player)
-	if not cash or cash.Value < cost then
+	if not PlayerState.trySpendCleanCash(player, cost) then
 		return false, "CannotAfford"
 	end
 
-	cash.Value -= cost
 	repairsInProgress[model] = true
 
 	task.delay(stats.RepairSeconds, function()

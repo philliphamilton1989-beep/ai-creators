@@ -41,27 +41,16 @@ end
 
 function Persistence.save(player: Player)
 	local state = PlayerState.get(player)
-	local leaderstats = player:FindFirstChild("leaderstats")
-	local cleanCashValue = leaderstats and leaderstats:FindFirstChild("Clean Cash")
 	if not state then
 		return -- never initialised, or already released; nothing to write
-	end
-	if not cleanCashValue then
-		-- Bailing here skips OwnedVehicles, playtime and the raid cooldown too,
-		-- purely because one Instance lookup failed. Saving a zero balance
-		-- instead would be worse, so this stays a skip — but a silent one is how
-		-- lost progress goes unnoticed.
-		--
-		-- The real fix is to hold Clean Cash in PlayerState and treat leaderstats
-		-- as a view of it, so a save never depends on an Instance at all. That
-		-- touches every system that spends cash, so it isn't done here.
-		warn(("Persistence: no Clean Cash value for %s; skipping save entirely"):format(player.Name))
-		return
 	end
 
 	local key = "Player_" .. player.UserId
 	local payload: SaveData = {
-		CleanCash = (cleanCashValue :: IntValue).Value,
+		-- Read straight off state. This used to come out of the leaderstats
+		-- Instance, so a missing Instance skipped the entire save — losing
+		-- playtime, the raid cooldown and owned vehicles along with the balance.
+		CleanCash = state.CleanCash,
 		StreetCash = state.StreetCash,
 		Heat = state.Heat,
 		GangId = state.GangId,
