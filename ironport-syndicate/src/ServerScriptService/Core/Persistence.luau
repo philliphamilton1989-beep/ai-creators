@@ -21,6 +21,8 @@ export type SaveData = {
 	GangId: string,
 	GangRank: string,
 	OwnedVehicles: { [string]: boolean },
+	PlaytimeSeconds: number,
+	LastRaidedAt: number,
 }
 
 local Persistence = {}
@@ -53,6 +55,10 @@ function Persistence.save(player: Player)
 		GangId = state.GangId,
 		GangRank = state.GangRank,
 		OwnedVehicles = state.OwnedVehicles,
+		-- Both drive anti-grief protections, so they have to survive a rejoin
+		-- or the protections can be reset at will.
+		PlaytimeSeconds = PlayerState.totalPlaytime(player),
+		LastRaidedAt = state.LastRaidedAt,
 	}
 
 	DataStoreRetry.run("SavePlayer " .. player.Name, function()

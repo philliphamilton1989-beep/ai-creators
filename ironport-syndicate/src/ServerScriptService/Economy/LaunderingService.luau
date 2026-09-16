@@ -7,14 +7,17 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PlayerState = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("PlayerState"))
+local Numeric = require(ReplicatedStorage:WaitForChild("Libraries"):WaitForChild("Numeric"))
 local GameConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("GameConfig"))
+
+local LaunderingService = {}
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local launderRemote = remotes:WaitForChild("EconomyRemotes"):WaitForChild("StartLaunderingCycleRemote") :: RemoteFunction
 
 local activeCycles: { [Player]: boolean } = {}
 
-launderRemote.OnServerInvoke = function(player: Player, amount: number): (boolean, string)
+launderRemote.OnServerInvoke = function(player: Player, rawAmount: number): (boolean, string)
 	if activeCycles[player] then
 		return false, "CycleAlreadyRunning"
 	end
@@ -23,7 +26,9 @@ launderRemote.OnServerInvoke = function(player: Player, amount: number): (boolea
 	if not state then
 		return false, "NoState"
 	end
-	if typeof(amount) ~= "number" or amount <= 0 or amount > state.StreetCash then
+
+	local amount = Numeric.toCashAmount(rawAmount)
+	if not amount or amount > state.StreetCash then
 		return false, "InvalidAmount"
 	end
 
@@ -50,3 +55,8 @@ launderRemote.OnServerInvoke = function(player: Player, amount: number): (boolea
 
 	return true, "CycleStarted"
 end
+
+-- Every service module must return a value: `require` on a ModuleScript that
+-- returns nothing throws, which took out every system after this one in
+-- SystemsBootstrap.
+return LaunderingService

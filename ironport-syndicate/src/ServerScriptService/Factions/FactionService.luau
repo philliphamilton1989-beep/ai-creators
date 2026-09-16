@@ -32,6 +32,7 @@ local TextService = game:GetService("TextService")
 local core = script.Parent.Parent:WaitForChild("Core")
 local PlayerState = require(core:WaitForChild("PlayerState"))
 local DataStoreRetry = require(core:WaitForChild("DataStoreRetry"))
+local Numeric = require(ReplicatedStorage:WaitForChild("Libraries"):WaitForChild("Numeric"))
 local FactionConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("FactionConfig"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -733,11 +734,11 @@ kickMemberRemote.OnServerInvoke = function(player: Player, targetUserId: number)
 	return true, "MemberKicked"
 end
 
-donateRemote.OnServerInvoke = function(player: Player, amount: number): (boolean, string)
-	if typeof(amount) ~= "number" or amount ~= amount or amount <= 0 then
+donateRemote.OnServerInvoke = function(player: Player, rawAmount: number): (boolean, string)
+	local amount = Numeric.toCashAmount(rawAmount)
+	if not amount then
 		return false, "InvalidAmount"
 	end
-	amount = math.floor(amount)
 
 	local crewId = FactionService.getCrewIdOf(player)
 	if not crewId then

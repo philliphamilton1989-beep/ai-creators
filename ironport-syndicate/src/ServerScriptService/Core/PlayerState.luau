@@ -17,6 +17,8 @@ export type SavedFields = {
 	GangId: string?,
 	GangRank: string?,
 	OwnedVehicles: { [string]: boolean }?,
+	PlaytimeSeconds: number?,
+	LastRaidedAt: number?,
 }
 
 export type State = {
@@ -30,7 +32,14 @@ export type State = {
 	EquippedWeaponId: string,
 	IsDowned: boolean,
 	InSafehouse: boolean,
-	JoinedAt: number,
+	-- Playtime carried in from previous sessions, and when this one started.
+	-- Anti-grief protections key off total playtime rather than time since
+	-- joining this server, so they can't be reset by rejoining.
+	PlaytimeSeconds: number,
+	SessionStartedAt: number,
+	-- Wall-clock (os.time) so it stays meaningful across servers and restarts.
+	-- os.clock is process uptime and would be bypassed by any server hop.
+	LastRaidedAt: number,
 }
 
 local PlayerState = {}
@@ -46,7 +55,9 @@ function PlayerState.init(player: Player, loaded: SavedFields?): State
 		EquippedWeaponId = "Sidearm",
 		IsDowned = false,
 		InSafehouse = false,
-		JoinedAt = os.clock(),
+		PlaytimeSeconds = (loaded and loaded.PlaytimeSeconds) or 0,
+		SessionStartedAt = os.time(),
+		LastRaidedAt = (loaded and loaded.LastRaidedAt) or 0,
 	}
 	states[player] = state
 	PlayerState.pushOwnerView(player)
@@ -59,6 +70,17 @@ end
 
 function PlayerState.release(player: Player)
 	states[player] = nil
+end
+
+-- Total playtime including the current session. Computed from a fixed session
+-- start rather than accumulated, so calling it twice (a save on leave and again
+-- on BindToClose) can't double-count.
+function PlayerState.totalPlaytime(player: Player): number
+	local state = states[player]
+	if not state then
+		return 0
+	end
+	return state.PlaytimeSeconds + math.max(0, os.time() - state.SessionStartedAt)
 end
 
 -- Pushes the fields a player is allowed to see about themselves to their own client only.

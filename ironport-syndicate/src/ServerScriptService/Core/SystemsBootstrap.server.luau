@@ -1,19 +1,35 @@
 --!strict
--- Explicitly requires modules that register their remote handlers as a side
--- effect of being required (RaidService, LaunderingService, HeatService).
+-- Starts the systems whose remote handlers register as a side effect of being
+-- required.
 --
 -- This replaces the original scaffold's use of `_G` for cross-script wiring:
 -- `_G.ProcessDamage`/`_G.AddHeat` depended on Roblox's script execution order,
 -- which is not guaranteed, and the "fix" was a blind `task.wait(0.25)` that
 -- could still fail silently under load. `require()` is deterministic — a
 -- module is guaranteed fully loaded before the requiring script continues.
+--
+-- Each require is isolated. A plain sequence of requires meant one broken
+-- module took out every system listed after it, which is exactly what happened:
+-- LaunderingService was missing its module-level return, so the require threw
+-- here and Heists and Territory — required nowhere else — never started at all,
+-- with nothing in the log pointing at the cause.
 
-local factions = script.Parent.Parent:WaitForChild("Factions")
+local serverScriptService = script.Parent.Parent
 
-require(script.Parent.Parent:WaitForChild("Defense"):WaitForChild("RaidService"))
-require(script.Parent.Parent:WaitForChild("Economy"):WaitForChild("LaunderingService"))
-require(script.Parent.Parent:WaitForChild("Heists"):WaitForChild("HeistService"))
-require(factions:WaitForChild("FactionService"))
-require(factions:WaitForChild("TerritoryService"))
-require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
-require(script.Parent:WaitForChild("HeatService"))
+local function startSystem(folderName: string, moduleName: string)
+	local ok, err = pcall(function()
+		local folder = serverScriptService:WaitForChild(folderName)
+		require(folder:WaitForChild(moduleName))
+	end)
+	if not ok then
+		warn(("SystemsBootstrap: %s.%s failed to start: %s"):format(folderName, moduleName, tostring(err)))
+	end
+end
+
+startSystem("Defense", "RaidService")
+startSystem("Economy", "LaunderingService")
+startSystem("Heists", "HeistService")
+startSystem("Factions", "FactionService")
+startSystem("Factions", "TerritoryService")
+startSystem("Vehicles", "VehicleService")
+startSystem("Core", "HeatService")
