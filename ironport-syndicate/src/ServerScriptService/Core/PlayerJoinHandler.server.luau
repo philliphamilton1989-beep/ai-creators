@@ -8,6 +8,10 @@ local FactionService = require(script.Parent.Parent:WaitForChild("Factions"):Wai
 local VehicleService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
 local GameConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("GameConfig"))
 
+-- BindToClose gets a limited window from Roblox; leave headroom rather than
+-- spending all of it waiting on stragglers.
+local SHUTDOWN_SAVE_DEADLINE_SECONDS = 20
+
 Players.PlayerAdded:Connect(function(player)
 	local saved = Persistence.load(player)
 
@@ -39,8 +43,26 @@ Players.PlayerRemoving:Connect(function(player)
 	PlayerState.release(player)
 end)
 
+-- Saves run in parallel, not serially. Each save can spend seconds in DataStore
+-- retries, and Roblox only allows BindToClose a limited window before killing
+-- the process. Saving a full server one player at a time would run past that
+-- window and lose everyone at the back of the list.
 game:BindToClose(function()
-	for _, player in Players:GetPlayers() do
-		Persistence.save(player)
+	local players = Players:GetPlayers()
+	local remaining = #players
+	if remaining == 0 then
+		return
+	end
+
+	for _, player in players do
+		task.spawn(function()
+			Persistence.save(player)
+			remaining -= 1
+		end)
+	end
+
+	local deadline = os.clock() + SHUTDOWN_SAVE_DEADLINE_SECONDS
+	while remaining > 0 and os.clock() < deadline do
+		task.wait(0.1)
 	end
 end)

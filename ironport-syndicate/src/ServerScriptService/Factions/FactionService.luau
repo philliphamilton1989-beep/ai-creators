@@ -52,6 +52,11 @@ local NEUTRAL = "Neutral"
 local BOSS_RANK = "Boss"
 local FLUSH_INTERVAL_SECONDS = 60
 local REVALIDATE_INTERVAL_SECONDS = 60
+-- Enough history to cover a retry storm around a single flush without growing
+-- the stored record unboundedly.
+local MAX_TRACKED_FLUSHES = 20
+-- BindToClose gets a limited window from Roblox; don't spend all of it here.
+local SHUTDOWN_FLUSH_DEADLINE_SECONDS = 15
 
 -- Members are keyed by tostring(userId): DataStore serialises to JSON, where
 -- number keys are not safe to round-trip.
@@ -67,6 +72,9 @@ type Crew = {
 	OwnerUserId: number,
 	Members: { [string]: MemberRecord },
 	Treasury: number,
+	-- Tokens of recently applied delta flushes, newest last. Bounded; see
+	-- flushCrew for why they exist.
+	AppliedFlushes: { string }?,
 }
 
 type PendingDelta = {
@@ -131,11 +139,26 @@ local function flushCrew(crewId: string)
 	end
 	pendingDeltas[crewId] = nil
 
+	-- One token per logical flush, generated outside the retry loop on purpose.
+	-- This transform is additive, so it is not safe to repeat: an UpdateAsync
+	-- can commit on the server and still report failure (lost response,
+	-- timeout), and both the retry inside DataStoreRetry and the requeue below
+	-- would then credit the same delta a second time — silently inflating the
+	-- treasury. Recording the token in the record makes re-application a no-op,
+	-- which is the only thing that actually closes that hole.
+	local flushToken = HttpService:GenerateGUID(false)
+
 	local ok = DataStoreRetry.run("FlushCrew " .. crewId, function()
 		crewStore:UpdateAsync(crewKey(crewId), function(stored: Crew?): Crew?
 			if not stored then
 				return nil -- crew was disbanded elsewhere; drop the delta
 			end
+
+			local applied = stored.AppliedFlushes or {}
+			if table.find(applied, flushToken) then
+				return nil -- this delta already landed; cancel the write
+			end
+
 			stored.Treasury += pending.Treasury
 			for userIdStr, amount in pending.Contribution do
 				local member = stored.Members[userIdStr]
@@ -146,6 +169,13 @@ local function flushCrew(crewId: string)
 						else rankForContribution(member.Contribution)
 				end
 			end
+
+			table.insert(applied, flushToken)
+			while #applied > MAX_TRACKED_FLUSHES do
+				table.remove(applied, 1)
+			end
+			stored.AppliedFlushes = applied
+
 			return stored
 		end)
 	end)
@@ -830,6 +860,32 @@ task.spawn(function()
 	end
 end)
 
-game:BindToClose(flushAllPending)
+-- Flushes run in parallel at shutdown, not serially. Each flush can spend
+-- seconds in DataStore retries, and Roblox only allows BindToClose a limited
+-- window before killing the process — serial flushes would silently drop
+-- whatever was still queued at the back of the list.
+game:BindToClose(function()
+	local crewIds = {}
+	for crewId in pendingDeltas do
+		table.insert(crewIds, crewId)
+	end
+
+	local remaining = #crewIds
+	if remaining == 0 then
+		return
+	end
+
+	for _, crewId in crewIds do
+		task.spawn(function()
+			flushCrew(crewId)
+			remaining -= 1
+		end)
+	end
+
+	local deadline = os.clock() + SHUTDOWN_FLUSH_DEADLINE_SECONDS
+	while remaining > 0 and os.clock() < deadline do
+		task.wait(0.1)
+	end
+end)
 
 return FactionService
