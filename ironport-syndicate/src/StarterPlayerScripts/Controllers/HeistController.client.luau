@@ -27,6 +27,14 @@ phaseRemote.OnClientEvent:Connect(function(payload: { [string]: any })
 		siteState.Parent = heistSitesFolder
 	end
 
+	-- Clear first. Each phase sends a different set of fields, so merging them
+	-- left ExpiresAt, LootRemaining, ClaimedBagId and Reason behind after the
+	-- phase they belonged to — and carried them into the next heist at this
+	-- same site, where UI would read them as current.
+	for key in siteState:GetAttributes() do
+		siteState:SetAttribute(key, nil)
+	end
+
 	-- Attributes can only hold simple types, so array fields like LootBagIds
 	-- are intentionally skipped here — once the level exists, UI should read
 	-- which bags are left directly off the physical loot bag parts in the

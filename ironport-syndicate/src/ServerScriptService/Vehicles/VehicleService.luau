@@ -173,6 +173,21 @@ local function setDisabled(model: Model, disabled: boolean)
 	end
 end
 
+local function ejectAllOccupants(model: Model): { Humanoid }
+	local ejected = {}
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("VehicleSeat") or descendant:IsA("Seat") then
+			local seat = descendant :: VehicleSeat
+			local occupant = seat.Occupant
+			if occupant then
+				table.insert(ejected, occupant)
+				ejectOccupant(seat)
+			end
+		end
+	end
+	return ejected
+end
+
 local function despawnModel(model: Model)
 	local owner = ownerOf(model)
 	if owner then
@@ -182,6 +197,13 @@ local function despawnModel(model: Model)
 		end
 	end
 	repairsInProgress[model] = nil
+
+	-- Destroying the model out from under a seated player leaves them stuck
+	-- with Sit = true and no seat to stand up from.
+	ejectAllOccupants(model)
+
+	-- Clients were told when this spawned; they have to be told it's gone.
+	pushState(model, "Despawned")
 	model:Destroy()
 end
 
@@ -203,15 +225,8 @@ local function destroyVehicle(model: Model)
 
 	-- Anyone still riding takes the hit, routed through DamageService so it
 	-- respects the downed/bleedout state machine instead of killing outright.
-	for _, descendant in model:GetDescendants() do
-		if descendant:IsA("VehicleSeat") or descendant:IsA("Seat") then
-			local seat = descendant :: VehicleSeat
-			local occupant = seat.Occupant
-			if occupant then
-				ejectOccupant(seat)
-				DamageService.processDamage(occupant, VehicleConfig.DestructionOccupantDamage, nil, false)
-			end
-		end
+	for _, occupant in ejectAllOccupants(model) do
+		DamageService.processDamage(occupant, VehicleConfig.DestructionOccupantDamage, nil, false)
 	end
 
 	pushState(model, "Destroyed")
@@ -431,8 +446,19 @@ repairRemote.OnServerInvoke = function(player: Player): (boolean, string)
 		if not model.Parent or model:GetAttribute("VehicleDestroyed") == true then
 			return
 		end
-		model:SetAttribute("VehicleHealth", maxHealth)
-		setDisabled(model, false)
+
+		-- Restore only what was paid for, measured from health at completion.
+		-- Healing to full here meant starting a 1 HP repair for pocket change,
+		-- taking hundreds of damage during the window, and having all of it
+		-- repaired for free.
+		local currentHealth = model:GetAttribute("VehicleHealth")
+		if typeof(currentHealth) ~= "number" then
+			return
+		end
+		model:SetAttribute("VehicleHealth", math.min(maxHealth, currentHealth + missing))
+
+		local restored = model:GetAttribute("VehicleHealth") :: number
+		setDisabled(model, restored <= maxHealth * VehicleConfig.DisabledHealthFraction)
 		pushState(model, "Repaired")
 	end)
 

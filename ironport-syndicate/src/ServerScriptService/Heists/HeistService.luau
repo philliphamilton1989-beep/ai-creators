@@ -17,6 +17,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PlayerState = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("PlayerState"))
 local HeatService = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("HeatService"))
+local FactionService = require(script.Parent.Parent:WaitForChild("Factions"):WaitForChild("FactionService"))
 local HeistConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("HeistConfig"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -36,6 +37,7 @@ type HeistPhase = "Breaching" | "Looting"
 type HeistInstance = {
 	SiteId: string,
 	Phase: HeistPhase,
+	Planter: Player,
 	Participants: { [Player]: true },
 	LootBags: { [string]: LootBag },
 	LootRemaining: number,
@@ -46,6 +48,7 @@ local HeistService = {}
 
 local activeHeists: { [string]: HeistInstance } = {}
 local lastEndedAt: { [string]: number } = {}
+local lastPickupAt: { [Player]: number } = {}
 local warnedMissingAnchor: { [string]: true } = {}
 
 -- Checked rather than cast: a VaultDoor that isn't a BasePart would throw on
@@ -82,22 +85,31 @@ local function isNearSite(player: Player, siteId: string): boolean
 	return (root.Position - anchor.Position).Magnitude <= PROXIMITY_STUDS
 end
 
-local function playersNearSite(siteId: string): { Player }
-	local anchor = getSiteAnchor(siteId)
-	if not anchor then
-		warnMissingAnchorOnce(siteId)
-		-- Site not built yet: treat everyone currently online as "the crew"
-		-- so the state machine is testable before the level exists.
-		return Players:GetPlayers()
-	end
-
-	local nearby = {}
+-- The heist crew is the planter plus their own crewmates, never "whoever is
+-- standing here". Proximity alone let a rival or a stranger camp the vault and
+-- claim the entire payout with full loot rights — the one anti-grief path that
+-- wasn't consulting FactionService like the rest of the codebase does.
+--
+-- The planter is always first in the returned list so MaxSquadSize truncation
+-- can never drop the person who paid the Heat to open the vault.
+local function eligibleCrewAtSite(siteId: string, planter: Player): { Player }
+	local crew = { planter }
 	for _, player in Players:GetPlayers() do
+		if player == planter then
+			continue
+		end
+		local state = PlayerState.get(player)
+		if not state or state.IsDowned then
+			continue
+		end
+		if not FactionService.areCrewmates(planter, player) then
+			continue
+		end
 		if isNearSite(player, siteId) then
-			table.insert(nearby, player)
+			table.insert(crew, player)
 		end
 	end
-	return nearby
+	return crew
 end
 
 local function tableKeys(t: { [string]: any }): { string }
@@ -136,7 +148,7 @@ local function completeBreach(siteId: string)
 		return
 	end
 
-	local crew = playersNearSite(siteId)
+	local crew = eligibleCrewAtSite(siteId, instance.Planter)
 
 	if #crew < config.MinSquadSize then
 		activeHeists[siteId] = nil
@@ -146,6 +158,7 @@ local function completeBreach(siteId: string)
 	end
 
 	if #crew > config.MaxSquadSize then
+		-- Truncation keeps index 1, which is always the planter.
 		local capped = {}
 		for i = 1, config.MaxSquadSize do
 			capped[i] = crew[i]
@@ -200,9 +213,17 @@ plantChargeRemote.OnServerInvoke = function(player: Player, siteId: string): (bo
 		return false, "TooFarFromSite"
 	end
 
+	-- Checked up front as well as at breach completion: a heist that can't
+	-- possibly field a squad shouldn't charge the planter HeatOnBreach and burn
+	-- the site's cooldown before telling them so.
+	if #eligibleCrewAtSite(siteId, player) < config.MinSquadSize then
+		return false, "NotEnoughCrew"
+	end
+
 	local instance: HeistInstance = {
 		SiteId = siteId,
 		Phase = "Breaching",
+		Planter = player,
 		Participants = {},
 		LootBags = {},
 		LootRemaining = 0,
@@ -245,9 +266,21 @@ pickupLootRemote.OnServerInvoke = function(player: Player, siteId: string, lootB
 	if not state then
 		return false, "PlayerUnavailable"
 	end
+	-- Same guard every other system applies; its absence here let a player who
+	-- was bleeding out keep looting the vault.
+	if state.IsDowned then
+		return false, "PlayerUnavailable"
+	end
 	if not isNearSite(player, siteId) then
 		return false, "TooFarFromSite"
 	end
+
+	local now = os.clock()
+	local lastPickup = lastPickupAt[player]
+	if lastPickup and now - lastPickup < HeistConfig.PickupCooldownSeconds then
+		return false, "PickingUpTooFast"
+	end
+	lastPickupAt[player] = now
 
 	bag.Claimed = true
 	instance.LootRemaining -= 1
@@ -271,6 +304,7 @@ Players.PlayerRemoving:Connect(function(player)
 	for _, instance in activeHeists do
 		instance.Participants[player] = nil
 	end
+	lastPickupAt[player] = nil
 end)
 
 task.spawn(function()

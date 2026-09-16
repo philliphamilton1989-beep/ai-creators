@@ -18,7 +18,12 @@ export type HeistSite = {
 	HeatPerLootBag: number,
 }
 
-local HeistConfig: { Sites: { [string]: HeistSite } } = {
+local HeistConfig: { Sites: { [string]: HeistSite }, PickupCooldownSeconds: number } = {
+	-- Minimum gap between one player's loot pickups. Without pacing, a single
+	-- participant can claim every bag in one frame, which defeats both the
+	-- heist time limit and any notion of splitting the take across the crew.
+	PickupCooldownSeconds = 1.5,
+
 	Sites = {
 		IronportSavingsVault = {
 			DisplayName = "Ironport Savings & Loan",
