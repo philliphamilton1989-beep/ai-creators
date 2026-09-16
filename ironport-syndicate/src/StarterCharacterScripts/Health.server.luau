@@ -1,0 +1,12 @@
+--!strict
+-- Intentionally empty.
+--
+-- Roblox injects its own passive health-regeneration script into every
+-- character UNLESS a script named "Health" already exists in
+-- StarterCharacterScripts. This file's only job is to be that script, which
+-- suppresses the default regen.
+--
+-- Two reasons it has to go: passive regen undoes the fixed downed health that
+-- the bleedout state machine pins players at, and a tactical shooter with
+-- revives shouldn't hand out free healing for walking away for ten seconds.
+-- Healing is meant to come from revives and (later) consumables.

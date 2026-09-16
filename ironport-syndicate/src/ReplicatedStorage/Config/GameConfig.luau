@@ -14,6 +14,12 @@ return {
 	Bleedout = {
 		DurationSeconds = 45,
 		CrawlSpeed = 3,
+		-- Health a downed player is pinned at. Passive regen is suppressed (see
+		-- StarterCharacterScripts/Health), so this doesn't drift back up.
+		DownedHealth = 20,
+		ReviveSeconds = 5,
+		ReviveRangeStuds = 10,
+		FinishRangeStuds = 10,
 	},
 
 	Raid = {

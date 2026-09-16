@@ -25,6 +25,9 @@ export type State = {
 	GangId: string,
 	GangRank: string,
 	OwnedVehicles: { [string]: boolean },
+	-- Server's record of what the player is holding. Never taken from the
+	-- client at fire time: a client-supplied weapon id is a free damage upgrade.
+	EquippedWeaponId: string,
 	IsDowned: boolean,
 	InSafehouse: boolean,
 	JoinedAt: number,
@@ -40,6 +43,7 @@ function PlayerState.init(player: Player, loaded: SavedFields?): State
 		GangId = (loaded and loaded.GangId) or "Neutral",
 		GangRank = (loaded and loaded.GangRank) or "Recruit",
 		OwnedVehicles = (loaded and loaded.OwnedVehicles) or {},
+		EquippedWeaponId = "Sidearm",
 		IsDowned = false,
 		InSafehouse = false,
 		JoinedAt = os.clock(),

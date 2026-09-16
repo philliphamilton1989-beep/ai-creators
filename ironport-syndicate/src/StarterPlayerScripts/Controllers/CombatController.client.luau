@@ -1,41 +1,75 @@
 --!strict
--- Client-side input and a UX-only debounce. The server (FireWeaponHandler)
--- enforces the real fire-rate limit and independently validates every shot —
--- this debounce exists purely so a held mouse button doesn't spam the remote,
--- not as a security measure.
+-- Firing input. Bound through ContextActionService rather than a raw
+-- MouseButton1 listener so gamepad players get a trigger and mobile players get
+-- a generated on-screen button — the previous mouse-only binding left the
+-- majority of Roblox's audience unable to shoot at all.
+--
+-- The client sends only an aim direction. Which weapon is firing, where the shot
+-- starts and how fast it may be fired are all server-held (see
+-- FireWeaponHandler), so the local debounce here is purely to avoid spamming
+-- the remote while the trigger is held — not a security measure.
 
+local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
-local camera = Workspace.CurrentCamera
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local fireEvent = remotes:WaitForChild("CombatRemotes"):WaitForChild("FireWeaponRemote") :: RemoteEvent
 
-local equippedWeaponId = "Sidearm"
-local fireDebounce = false
+local FIRE_ACTION = "IronportFire"
+local SEND_INTERVAL_SECONDS = 0.05
 
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then
-		return
-	end
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-		return
-	end
-	if fireDebounce then
-		return
+local lastSentAt = 0
+
+-- The server raycasts from the character's head, so aim is measured from there
+-- too; deriving it from the camera instead would send a direction that doesn't
+-- match the ray the server actually casts.
+local function aimDirection(): Vector3?
+	local character = player.Character
+	local head = character and character:FindFirstChild("Head") :: BasePart?
+	local camera = Workspace.CurrentCamera
+	if not head or not camera then
+		return nil
 	end
 
-	fireDebounce = true
-	local origin = camera.CFrame.Position
-	local direction = (mouse.Hit.Position - origin).Unit
-	fireEvent:FireServer(equippedWeaponId, origin, direction)
+	-- mouse.Hit is already a camera-through-cursor raycast. With no pointer
+	-- (gamepad, touch) fall back to where the camera is looking.
+	local target = mouse.Hit and mouse.Hit.Position or (camera.CFrame.Position + camera.CFrame.LookVector * 500)
+	local delta = target - head.Position
+	if delta.Magnitude <= 0 then
+		return nil
+	end
+	return delta.Unit
+end
 
-	task.delay(0.08, function()
-		fireDebounce = false
-	end)
-end)
+local function onFireAction(_actionName: string, inputState: Enum.UserInputState): Enum.ContextActionResult
+	if inputState ~= Enum.UserInputState.Begin then
+		return Enum.ContextActionResult.Pass
+	end
+
+	local now = os.clock()
+	if now - lastSentAt < SEND_INTERVAL_SECONDS then
+		return Enum.ContextActionResult.Sink
+	end
+
+	local direction = aimDirection()
+	if direction then
+		lastSentAt = now
+		fireEvent:FireServer(direction)
+	end
+
+	return Enum.ContextActionResult.Sink
+end
+
+ContextActionService:BindAction(
+	FIRE_ACTION,
+	onFireAction,
+	true, -- generate a touch button for mobile
+	Enum.UserInputType.MouseButton1,
+	Enum.KeyCode.ButtonR2
+)
+ContextActionService:SetTitle(FIRE_ACTION, "Fire")

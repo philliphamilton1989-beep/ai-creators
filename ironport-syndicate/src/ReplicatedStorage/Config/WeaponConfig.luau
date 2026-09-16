@@ -25,7 +25,10 @@ local WeaponConfig: { [string]: WeaponStats } = {
 		FireRateSeconds = 0.09,
 	},
 	Shotgun = {
-		Damage = 12, -- per pellet
+		-- Whole-hit damage, not per-pellet: only one ray is cast. Real pellet
+		-- spread needs a spread angle and a multi-ray loop, which isn't built
+		-- yet — the damage here stands in for the full spread connecting.
+		Damage = 65,
 		HeadshotMultiplier = 1.5,
 		Range = 250,
 		FireRateSeconds = 0.85,

@@ -15,6 +15,7 @@
         "CombatRemotes": {
           "$className": "Folder",
           "FireWeaponRemote": { "$className": "RemoteEvent" },
+          "EquipWeaponRemote": { "$className": "RemoteFunction" },
           "BleedoutStateRemote": { "$className": "RemoteEvent" },
           "RevivePlayerRemote": { "$className": "RemoteFunction" },
           "FinishDownedPlayerRemote": { "$className": "RemoteFunction" },
@@ -89,6 +90,10 @@
       "StarterPlayerScripts": {
         "$className": "StarterPlayerScripts",
         "Controllers": { "$path": "src/StarterPlayerScripts/Controllers" }
+      },
+      "StarterCharacterScripts": {
+        "$className": "StarterCharacterScripts",
+        "$path": "src/StarterCharacterScripts"
       }
     }
   }

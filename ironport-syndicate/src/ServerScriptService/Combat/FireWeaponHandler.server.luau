@@ -1,20 +1,22 @@
 --!strict
--- Server-authoritative weapon fire. Two exploits fixed from the original scaffold:
+-- Server-authoritative weapon fire.
 --
---  1. Origin spoofing: the original trusted a client-supplied raycast origin
---     wholesale, so an exploiter could fire from anywhere on the map — through
---     walls, across the level, from spectator. Origin is now derived from the
---     player's own HumanoidRootPart, with the client's claimed origin only used
---     as a sanity check against it.
+-- The client supplies only an aim direction. Everything else — which weapon is
+-- firing, where the shot starts, how fast it may be fired — comes from server
+-- state, because all of it is cheatable otherwise:
 --
---  2. Unlimited fire rate: the original only debounced firing in a client
---     LocalScript, trivially bypassed by calling the remote directly. Fire rate
---     is now enforced here, per player per weapon.
+--  * Origin is the character's own head position. An earlier version accepted a
+--    client-sent origin and bounded it with a tolerance, which was both
+--    spoofable within the tolerance and mis-tuned (8 studs, against a default
+--    third-person camera ~12.5 studs back) so that every shot was rejected.
+--    There is no tolerance to get wrong if the origin is never sent.
+--  * The weapon is whatever PlayerState says is equipped. A client-supplied
+--    weaponId let an exploiter claim Rifle stats with any weapon.
+--  * Fire rate is capped per player rather than per weapon, so switching
+--    weapons can't be used to multiply the cap.
 --
--- Also switched from a RemoteFunction to a RemoteEvent: invoking a
--- RemoteFunction yields the client until the server responds, which is added
--- latency for a fast, latency-sensitive action with no real security upside
--- over a validated RemoteEvent.
+-- Aim direction is inherently client-authoritative — there is no server-side
+-- truth about where someone is pointing — so it's sanitised, not trusted.
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -27,70 +29,80 @@ local HeatService = require(script.Parent.Parent:WaitForChild("Core"):WaitForChi
 local VehicleService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
-local fireEvent = remotes:WaitForChild("CombatRemotes"):WaitForChild("FireWeaponRemote") :: RemoteEvent
+local combatRemotes = remotes:WaitForChild("CombatRemotes")
+local fireEvent = combatRemotes:WaitForChild("FireWeaponRemote") :: RemoteEvent
+local equipRemote = combatRemotes:WaitForChild("EquipWeaponRemote") :: RemoteFunction
 
-local ORIGIN_TOLERANCE_STUDS = 8 -- allows for camera offset from the character root
+local lastFireTime: { [Player]: number } = {}
 
-local lastFireTime: { [Player]: { [string]: number } } = {}
-
-local function isRateLimited(player: Player, weaponId: string, fireRateSeconds: number): boolean
-	local perPlayer = lastFireTime[player]
-	if not perPlayer then
-		perPlayer = {}
-		lastFireTime[player] = perPlayer
-	end
-
-	local now = os.clock()
-	local last = perPlayer[weaponId]
-	if last and now - last < fireRateSeconds then
-		return true
-	end
-
-	perPlayer[weaponId] = now
-	return false
+local function isFiniteVector(value: Vector3): boolean
+	-- NaN fails every comparison with itself, so it slips past a plain
+	-- `Magnitude == 0` guard and reaches Workspace:Raycast.
+	local magnitude = value.Magnitude
+	return magnitude == magnitude and magnitude > 0 and magnitude ~= math.huge
 end
 
-Players.PlayerRemoving:Connect(function(player)
-	lastFireTime[player] = nil
-end)
-
-fireEvent.OnServerEvent:Connect(function(player: Player, weaponId: string, claimedOrigin: Vector3, direction: Vector3)
-	local stats = WeaponConfig[weaponId]
-	if not stats then
-		return -- unknown weaponId: ignore rather than trust it
+local function shotOrigin(character: Model): Vector3?
+	local head = character:FindFirstChild("Head") :: BasePart?
+	if head then
+		return head.Position
 	end
+	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	return root and root.Position
+end
 
-	if isRateLimited(player, weaponId, stats.FireRateSeconds) then
-		return
+equipRemote.OnServerInvoke = function(player: Player, weaponId: string): (boolean, string)
+	if typeof(weaponId) ~= "string" or not WeaponConfig[weaponId] then
+		return false, "UnknownWeapon"
 	end
-
-	local char = player.Character
-	local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-	local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local state = PlayerState.get(player)
+	if not state then
+		return false, "PlayerUnavailable"
+	end
+	state.EquippedWeaponId = weaponId
+	return true, "Equipped"
+end
 
-	if not char or not humanoid or not root or not state then
-		return
-	end
-	if state.IsDowned then
-		return
-	end
-	if typeof(claimedOrigin) ~= "Vector3" or typeof(direction) ~= "Vector3" or direction.Magnitude == 0 then
+fireEvent.OnServerEvent:Connect(function(player: Player, direction: Vector3)
+	if typeof(direction) ~= "Vector3" or not isFiniteVector(direction) then
 		return
 	end
 
-	-- Reject shots whose claimed origin is nowhere near where the server thinks
-	-- the player actually is, instead of raycasting from wherever the client says.
-	local serverOrigin = root.Position
-	if (claimedOrigin - serverOrigin).Magnitude > ORIGIN_TOLERANCE_STUDS then
+	local state = PlayerState.get(player)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not state or not character or not humanoid then
 		return
 	end
+	if state.IsDowned or humanoid.Health <= 0 then
+		return
+	end
+
+	local stats = WeaponConfig[state.EquippedWeaponId]
+	if not stats then
+		return
+	end
+
+	-- Checked but not committed yet: a shot rejected below must not consume the
+	-- player's next legitimate shot.
+	local now = os.clock()
+	local last = lastFireTime[player]
+	if last and now - last < stats.FireRateSeconds then
+		return
+	end
+
+	local origin = shotOrigin(character)
+	if not origin then
+		return
+	end
+
+	lastFireTime[player] = now
 
 	local rayParams = RaycastParams.new()
 	rayParams.FilterType = Enum.RaycastFilterType.Exclude
-	rayParams.FilterDescendantsInstances = { char }
+	rayParams.FilterDescendantsInstances = { character }
 
-	local result = Workspace:Raycast(serverOrigin, direction.Unit * stats.Range, rayParams)
+	local result = Workspace:Raycast(origin, direction.Unit * stats.Range, rayParams)
 	if result and result.Instance then
 		-- A Humanoid is a SIBLING of the body parts, both children of the
 		-- character Model — never an ancestor of them. Walking the ancestor
@@ -112,4 +124,8 @@ fireEvent.OnServerEvent:Connect(function(player: Player, weaponId: string, claim
 	end
 
 	HeatService.add(player, 2)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	lastFireTime[player] = nil
 end)
