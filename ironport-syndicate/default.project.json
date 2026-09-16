@@ -50,6 +50,18 @@
         "HeistsRemotes": {
           "$className": "Folder",
           "HeistPhaseRemote": { "$className": "RemoteEvent" }
+        },
+        "FactionRemotes": {
+          "$className": "Folder",
+          "CreateCrewRemote": { "$className": "RemoteFunction" },
+          "InviteToCrewRemote": { "$className": "RemoteFunction" },
+          "RespondToInviteRemote": { "$className": "RemoteFunction" },
+          "LeaveCrewRemote": { "$className": "RemoteFunction" },
+          "KickFromCrewRemote": { "$className": "RemoteFunction" },
+          "DonateToCrewRemote": { "$className": "RemoteFunction" },
+          "CrewUpdateRemote": { "$className": "RemoteEvent" },
+          "CrewInviteRemote": { "$className": "RemoteEvent" },
+          "TerritoryUpdateRemote": { "$className": "RemoteEvent" }
         }
       }
     },
@@ -59,6 +71,7 @@
       "Combat": { "$path": "src/ServerScriptService/Combat" },
       "Defense": { "$path": "src/ServerScriptService/Defense" },
       "Economy": { "$path": "src/ServerScriptService/Economy" },
+      "Factions": { "$path": "src/ServerScriptService/Factions" },
       "Heists": { "$path": "src/ServerScriptService/Heists" }
     },
     "StarterPlayer": {

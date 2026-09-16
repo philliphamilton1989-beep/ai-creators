@@ -10,6 +10,7 @@
 local DataStoreService = game:GetService("DataStoreService")
 
 local PlayerState = require(script.Parent:WaitForChild("PlayerState"))
+local DataStoreRetry = require(script.Parent:WaitForChild("DataStoreRetry"))
 
 local store = DataStoreService:GetDataStore("IronportSyndicate_PlayerData_v1")
 
@@ -23,26 +24,9 @@ export type SaveData = {
 
 local Persistence = {}
 
-local RETRY_ATTEMPTS = 3
-local RETRY_BACKOFF_SECONDS = 1.5
-
-local function withRetry<T>(fn: () -> T): (boolean, T?)
-	for attempt = 1, RETRY_ATTEMPTS do
-		local ok, result = pcall(fn)
-		if ok then
-			return true, result
-		end
-		warn(("Persistence attempt %d/%d failed: %s"):format(attempt, RETRY_ATTEMPTS, tostring(result)))
-		if attempt < RETRY_ATTEMPTS then
-			task.wait(RETRY_BACKOFF_SECONDS * attempt)
-		end
-	end
-	return false, nil
-end
-
 function Persistence.load(player: Player): SaveData?
 	local key = "Player_" .. player.UserId
-	local ok, data = withRetry(function()
+	local ok, data = DataStoreRetry.run("LoadPlayer " .. player.Name, function()
 		return store:GetAsync(key)
 	end)
 	if not ok then
@@ -69,7 +53,7 @@ function Persistence.save(player: Player)
 		GangRank = state.GangRank,
 	}
 
-	withRetry(function()
+	DataStoreRetry.run("SavePlayer " .. player.Name, function()
 		store:SetAsync(key, payload)
 	end)
 end

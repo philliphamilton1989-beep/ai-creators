@@ -5,14 +5,15 @@
 -- quit. This adds all three.
 --
 -- Simplification: raids are tracked per defending player rather than per
--- safehouse/Crew, since Factions/territory aren't built yet. The cooldown and
--- shield logic carries over unchanged once safehouses are owned by a Crew
--- instead of a player.
+-- safehouse, since a safehouse isn't yet an owned place in the world. The
+-- cooldown and shield logic carries over unchanged once safehouses belong to a
+-- crew instead of an individual.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PlayerState = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("PlayerState"))
+local FactionService = require(script.Parent.Parent:WaitForChild("Factions"):WaitForChild("FactionService"))
 local GameConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("GameConfig"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -33,6 +34,10 @@ end
 function RaidService.canRaid(attacker: Player, defender: Player): (boolean, string?)
 	if attacker == defender then
 		return false, "CannotRaidSelf"
+	end
+
+	if FactionService.areCrewmates(attacker, defender) then
+		return false, "CannotRaidOwnCrew"
 	end
 
 	if secondsSinceJoin(defender) < GameConfig.Raid.NewPlayerShieldSeconds then

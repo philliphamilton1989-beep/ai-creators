@@ -8,7 +8,11 @@
 -- could still fail silently under load. `require()` is deterministic — a
 -- module is guaranteed fully loaded before the requiring script continues.
 
+local factions = script.Parent.Parent:WaitForChild("Factions")
+
 require(script.Parent.Parent:WaitForChild("Defense"):WaitForChild("RaidService"))
 require(script.Parent.Parent:WaitForChild("Economy"):WaitForChild("LaunderingService"))
 require(script.Parent.Parent:WaitForChild("Heists"):WaitForChild("HeistService"))
+require(factions:WaitForChild("FactionService"))
+require(factions:WaitForChild("TerritoryService"))
 require(script.Parent:WaitForChild("HeatService"))
