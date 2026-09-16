@@ -46,6 +46,10 @@
         "CraftingRemotes": {
           "$className": "Folder",
           "CraftItemRemote": { "$className": "RemoteFunction" }
+        },
+        "HeistsRemotes": {
+          "$className": "Folder",
+          "HeistPhaseRemote": { "$className": "RemoteEvent" }
         }
       }
     },
@@ -54,7 +58,8 @@
       "Core": { "$path": "src/ServerScriptService/Core" },
       "Combat": { "$path": "src/ServerScriptService/Combat" },
       "Defense": { "$path": "src/ServerScriptService/Defense" },
-      "Economy": { "$path": "src/ServerScriptService/Economy" }
+      "Economy": { "$path": "src/ServerScriptService/Economy" },
+      "Heists": { "$path": "src/ServerScriptService/Heists" }
     },
     "StarterPlayer": {
       "$className": "StarterPlayer",
