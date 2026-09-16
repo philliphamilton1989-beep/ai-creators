@@ -1,0 +1,67 @@
+{
+  "name": "IronportSyndicate",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Config": { "$path": "src/ReplicatedStorage/Config" },
+      "Libraries": { "$path": "src/ReplicatedStorage/Libraries" },
+      "Remotes": {
+        "$className": "Folder",
+        "CoreRemotes": {
+          "$className": "Folder",
+          "PlayerStateUpdateRemote": { "$className": "RemoteEvent" }
+        },
+        "CombatRemotes": {
+          "$className": "Folder",
+          "FireWeaponRemote": { "$className": "RemoteEvent" },
+          "BleedoutStateRemote": { "$className": "RemoteEvent" },
+          "RevivePlayerRemote": { "$className": "RemoteFunction" },
+          "FinishDownedPlayerRemote": { "$className": "RemoteFunction" },
+          "ThrowEMPRemote": { "$className": "RemoteFunction" },
+          "PlantBreachingChargeRemote": { "$className": "RemoteFunction" }
+        },
+        "DefenseVendorRemotes": {
+          "$className": "Folder",
+          "UpgradeSafehouseGuardsRemote": { "$className": "RemoteFunction" },
+          "BuyExplosiveRemote": { "$className": "RemoteFunction" },
+          "DeclareSafehouseRaidRemote": { "$className": "RemoteFunction" }
+        },
+        "TurretCCTVRemotes": {
+          "$className": "Folder",
+          "RequestCCTVAccessRemote": { "$className": "RemoteFunction" },
+          "ExitCCTVRemote": { "$className": "RemoteEvent" },
+          "ManualTurretAimRemote": { "$className": "RemoteEvent" },
+          "ManualTurretFireRemote": { "$className": "RemoteFunction" }
+        },
+        "VehicleRemotes": {
+          "$className": "Folder",
+          "RepairVehicleRemote": { "$className": "RemoteEvent" }
+        },
+        "EconomyRemotes": {
+          "$className": "Folder",
+          "StartLaunderingCycleRemote": { "$className": "RemoteFunction" },
+          "PickupLootBagRemote": { "$className": "RemoteFunction" }
+        },
+        "CraftingRemotes": {
+          "$className": "Folder",
+          "CraftItemRemote": { "$className": "RemoteFunction" }
+        }
+      }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Core": { "$path": "src/ServerScriptService/Core" },
+      "Combat": { "$path": "src/ServerScriptService/Combat" },
+      "Defense": { "$path": "src/ServerScriptService/Defense" },
+      "Economy": { "$path": "src/ServerScriptService/Economy" }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "Controllers": { "$path": "src/StarterPlayerScripts/Controllers" }
+      }
+    }
+  }
+}

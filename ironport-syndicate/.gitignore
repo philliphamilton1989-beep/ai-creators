@@ -1,0 +1,6 @@
+*.rbxl
+*.rbxlx
+sourcemap.json
+.vscode/
+node_modules/
+.DS_Store
