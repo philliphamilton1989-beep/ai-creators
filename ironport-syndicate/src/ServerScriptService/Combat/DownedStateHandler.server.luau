@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local DamageService = require(script.Parent:WaitForChild("DamageService"))
 local PlayerState = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("PlayerState"))
+local FactionService = require(script.Parent.Parent:WaitForChild("Factions"):WaitForChild("FactionService"))
 local GameConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("GameConfig"))
 
 local combatRemotes = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CombatRemotes")
@@ -97,6 +98,14 @@ finishRemote.OnServerInvoke = function(player: Player, targetUserId: number): (b
 	local target, targetHumanoid, reason = validateInteraction(player, targetUserId, GameConfig.Bleedout.FinishRangeStuds)
 	if not target or not targetHumanoid then
 		return false, reason :: string
+	end
+
+	-- Your own crew is off limits: finishing a crewmate is pure griefing, and
+	-- the downed player has no recourse against it. Deliberately checked only
+	-- here, not in validateInteraction — reviving a crewmate is the whole point
+	-- of revive. Two crewless players can still finish each other.
+	if FactionService.areCrewmates(player, target) then
+		return false, "CannotFinishOwnCrew"
 	end
 
 	DamageService.resolveBleedout(target, targetHumanoid, false)
