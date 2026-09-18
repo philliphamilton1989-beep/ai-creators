@@ -23,6 +23,9 @@ export type SaveData = {
 	OwnedVehicles: { [string]: boolean },
 	Inventory: { [string]: number },
 	HasCargoInsurance: boolean,
+	DeathSaveCharges: number,
+	WarpCharges: number,
+	RaidShieldUntil: number,
 	PlaytimeSeconds: number,
 	LastRaidedAt: number,
 }
@@ -59,7 +62,12 @@ function Persistence.save(player: Player)
 		GangRank = state.GangRank,
 		OwnedVehicles = state.OwnedVehicles,
 		Inventory = state.Inventory,
+		-- Paid-for consumables. These are real money; losing one to a dropped
+		-- save is a support ticket, so they persist like currency does.
 		HasCargoInsurance = state.HasCargoInsurance,
+		DeathSaveCharges = state.DeathSaveCharges,
+		WarpCharges = state.WarpCharges,
+		RaidShieldUntil = state.RaidShieldUntil,
 		-- Both drive anti-grief protections, so they have to survive a rejoin
 		-- or the protections can be reset at will.
 		PlaytimeSeconds = PlayerState.totalPlaytime(player),

@@ -158,6 +158,11 @@ function DamageService.processDamage(
 		return false -- fully absorbed by armor
 	end
 
+	-- Stamped for anything that needs to know the target is in a fight — the
+	-- Emergency Warp lockout reads this. An attribute rather than a call, so
+	-- neither module has to require the other.
+	character:SetAttribute("LastDamagedAt", os.clock())
+
 	-- Never act on a corpse. Without this, shooting a body during the respawn
 	-- window puts the already-dead player into bleedout, which leaves IsDowned
 	-- stuck true on their next life and halves their cash when the timer fires.

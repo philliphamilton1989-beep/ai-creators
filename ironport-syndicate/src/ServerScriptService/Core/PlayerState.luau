@@ -36,6 +36,9 @@ export type SavedFields = {
 	OwnedVehicles: { [string]: boolean }?,
 	Inventory: { [string]: number }?,
 	HasCargoInsurance: boolean?,
+	DeathSaveCharges: number?,
+	WarpCharges: number?,
+	RaidShieldUntil: number?,
 	PlaytimeSeconds: number?,
 	LastRaidedAt: number?,
 }
@@ -51,6 +54,12 @@ export type State = {
 	Inventory: { [string]: number },
 	-- Bought in advance with Clean Cash, consumed by the death it protects.
 	HasCargoInsurance: boolean,
+	-- Purchased consumables. Bought in the shop, spent later by the event they
+	-- cover — never prompted for at the moment of that event.
+	DeathSaveCharges: number,
+	WarpCharges: number,
+	-- os.time expiry. Wall-clock so it survives servers and restarts.
+	RaidShieldUntil: number,
 	-- Server's record of what the player is holding. Never taken from the
 	-- client at fire time: a client-supplied weapon id is a free damage upgrade.
 	EquippedWeaponId: string,
@@ -109,6 +118,9 @@ function PlayerState.init(player: Player, loaded: SavedFields?): State
 			then loaded.Inventory :: { [string]: number }
 			else { Sidearm = 1 },
 		HasCargoInsurance = (loaded and loaded.HasCargoInsurance) == true,
+		DeathSaveCharges = (loaded and loaded.DeathSaveCharges) or 0,
+		WarpCharges = (loaded and loaded.WarpCharges) or 0,
+		RaidShieldUntil = (loaded and loaded.RaidShieldUntil) or 0,
 		EquippedWeaponId = "Sidearm",
 		IsDowned = false,
 		InSafehouse = false,
@@ -181,6 +193,9 @@ function PlayerState.pushOwnerView(player: Player)
 		GangId = state.GangId,
 		GangRank = state.GangRank,
 		HasCargoInsurance = state.HasCargoInsurance,
+		DeathSaveCharges = state.DeathSaveCharges,
+		WarpCharges = state.WarpCharges,
+		RaidShieldUntil = state.RaidShieldUntil,
 	})
 end
 

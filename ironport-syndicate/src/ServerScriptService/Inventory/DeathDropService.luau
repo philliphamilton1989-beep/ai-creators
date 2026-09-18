@@ -138,6 +138,17 @@ local function onDeath(player: Player, deathPosition: Vector3)
 		return
 	end
 
+	-- A Death Save is the stronger protection and is spent first: it keeps
+	-- everything, Cargo included, where Clean Cash insurance only covers gear.
+	-- Consumed here, at the death it was bought in advance to cover — there is
+	-- deliberately no prompt at this moment, which is the whole design rule.
+	if state.DeathSaveCharges > 0 then
+		state.DeathSaveCharges -= 1
+		PlayerState.pushOwnerView(player)
+		InventoryService.onPlayerReady(player)
+		return
+	end
+
 	local insured = state.HasCargoInsurance
 	local kept, dropped = partitionInventory(state.Inventory, insured)
 

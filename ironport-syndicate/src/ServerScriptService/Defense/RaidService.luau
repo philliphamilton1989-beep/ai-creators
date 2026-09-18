@@ -46,6 +46,10 @@ function RaidService.canRaid(attacker: Player, defender: Player): (boolean, stri
 		return false, "TargetShielded"
 	end
 
+	if defenderState.RaidShieldUntil > os.time() then
+		return false, "TargetShielded"
+	end
+
 	if defenderState.LastRaidedAt > 0 and os.time() - defenderState.LastRaidedAt < GameConfig.Raid.CooldownSeconds then
 		return false, "SafehouseOnCooldown"
 	end
@@ -75,6 +79,14 @@ function RaidService.resolveRaid(attacker: Player, defender: Player): (boolean, 
 	-- hand the defender three hours of immunity.
 	if seizable <= 0 then
 		return false, "NothingToSeize", 0
+	end
+
+	-- A purchased shield is protection, not a licence. Raiding someone drops
+	-- your own shield — otherwise it buys total immunity while you farm players
+	-- who can't answer, which is the exact griefing the raid rules exist to stop.
+	if attackerState.RaidShieldUntil > os.time() then
+		attackerState.RaidShieldUntil = 0
+		PlayerState.pushOwnerView(attacker)
 	end
 
 	defenderState.LastRaidedAt = os.time()

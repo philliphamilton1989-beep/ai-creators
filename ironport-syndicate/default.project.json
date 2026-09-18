@@ -64,6 +64,10 @@
           "DropItemRemote": { "$className": "RemoteFunction" },
           "BuyCargoInsuranceRemote": { "$className": "RemoteFunction" }
         },
+        "MonetizationRemotes": {
+          "$className": "Folder",
+          "UseWarpRemote": { "$className": "RemoteFunction" }
+        },
         "PawnRemotes": {
           "$className": "Folder",
           "SellItemRemote": { "$className": "RemoteFunction" },

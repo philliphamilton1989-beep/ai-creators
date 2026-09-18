@@ -67,50 +67,56 @@ local Tables: { [string]: LootTable } = {
 		},
 	},
 
-	-- Street level: what's lying around in the open. Mostly junk, which is the
-	-- point — it gives a broke player something to sell without making the open
-	-- street competitive with the places worth searching.
-	ValuableStreet = {
-		DisplayName = "Street Find",
-		RollsMin = 1,
-		RollsMax = 2,
-		Entries = {
-			{ ItemId = "BrokenToy", Weight = 34, MinCount = 1, MaxCount = 2 },
-			{ ItemId = "PlasticToy", Weight = 26, MinCount = 1, MaxCount = 2 },
-			{ ItemId = "OldPhone", Weight = 22, MinCount = 1, MaxCount = 1 },
-			{ ItemId = "CopperPipe", Weight = 18, MinCount = 1, MaxCount = 2 },
-		},
-	},
-
-	-- Back alleys: electronics and household goods. Real money, and heavy enough
-	-- that clearing an alley is a decision about what to leave.
-	ValuableAlley = {
-		DisplayName = "Alley Stash",
+	-- ZONE 1 — street and dumpster scraps. Curbside bags, alley dumpsters, storm
+	-- drains. Mostly junk on purpose: it gives a broke player something to sell
+	-- without making the open street competitive with the places worth the risk.
+	-- Maps to the West Row Houses alleys on the district plan.
+	Zone1Street = {
+		DisplayName = "Street Scrap",
 		RollsMin = 1,
 		RollsMax = 3,
 		Entries = {
-			{ ItemId = "Laptop", Weight = 24, MinCount = 1, MaxCount = 1 },
-			{ ItemId = "GameConsole", Weight = 20, MinCount = 1, MaxCount = 1 },
-			{ ItemId = "PowerTools", Weight = 18, MinCount = 1, MaxCount = 1 },
-			{ ItemId = "FlatscreenTV", Weight = 14, MinCount = 1, MaxCount = 1 },
-			{ ItemId = "SilverCandlestick", Weight = 14, MinCount = 1, MaxCount = 2 },
-			{ ItemId = "OldPhone", Weight = 10, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "BrokenToy", Weight = 24, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "PlasticToy", Weight = 20, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "BrokenRadio", Weight = 18, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "Pocketknife", Weight = 14, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "BurnerPhone", Weight = 14, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "CopperScrap", Weight = 10, MinCount = 1, MaxCount = 3 },
 		},
 	},
 
-	-- Hidden caches: rooftops, locked rooms, the places you need a lockpick and
-	-- a reason to be there. Light and precious — the best haul per pound in the
-	-- game, and worth the walk.
-	ValuableHidden = {
-		DisplayName = "Hidden Cache",
+	-- ZONE 2 — hidden stashes and rooftops. Behind roof vents, locked fire-escape
+	-- landings, under cracked basement floorboards. Real money, and heavy enough
+	-- that clearing a stash is a decision about what to leave behind.
+	-- Maps to the Rail Scrap Yard and the L station rooftops.
+	Zone2Stash = {
+		DisplayName = "Hidden Stash",
+		RollsMin = 1,
+		RollsMax = 3,
+		Entries = {
+			{ ItemId = "Smartwatch", Weight = 22, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "DesignerSunglasses", Weight = 18, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "DSLRCamera", Weight = 17, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "PowerTools", Weight = 15, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "GameConsole", Weight = 13, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "GoldChain", Weight = 10, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "FlatscreenTV", Weight = 5, MinCount = 1, MaxCount = 1 },
+		},
+	},
+
+	-- ZONE 3 — black market and high-risk vaults. Combination-locked safes,
+	-- guarded bank storage, boss hideouts. The best money in the game, and the
+	-- only place a single item is worth more than a full load of Zone 1.
+	-- Maps to the Industrial Warehouse (keycard) and the Pawn Exchange boss area.
+	Zone3Vault = {
+		DisplayName = "Vault Cache",
 		RollsMin = 1,
 		RollsMax = 2,
 		Entries = {
-			{ ItemId = "GoldWatch", Weight = 30, MinCount = 1, MaxCount = 2 },
-			{ ItemId = "DiamondRing", Weight = 22, MinCount = 1, MaxCount = 1 },
-			{ ItemId = "AntiqueVase", Weight = 20, MinCount = 1, MaxCount = 1 },
-			{ ItemId = "BearerBonds", Weight = 12, MinCount = 1, MaxCount = 1 },
-			{ ItemId = "SilverCandlestick", Weight = 16, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "EncryptedDrive", Weight = 30, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "SilverIngot", Weight = 26, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "GoldRolex", Weight = 24, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "PrototypeMicrochip", Weight = 8, MinCount = 1, MaxCount = 1 },
 		},
 	},
 
