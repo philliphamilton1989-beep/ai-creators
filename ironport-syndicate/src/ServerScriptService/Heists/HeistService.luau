@@ -18,7 +18,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PlayerState = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("PlayerState"))
 local HeatService = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("HeatService"))
 local FactionService = require(script.Parent.Parent:WaitForChild("Factions"):WaitForChild("FactionService"))
+local LootService = require(script.Parent.Parent:WaitForChild("Inventory"):WaitForChild("LootService"))
 local HeistConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("HeistConfig"))
+local LootConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("LootConfig"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local plantChargeRemote = remotes:WaitForChild("CombatRemotes"):WaitForChild("PlantBreachingChargeRemote") :: RemoteFunction
@@ -288,6 +290,12 @@ pickupLootRemote.OnServerInvoke = function(player: Player, siteId: string, lootB
 	state.StreetCash += bag.Value
 	PlayerState.pushOwnerView(player)
 	HeatService.add(player, HeistConfig.Sites[siteId].HeatPerLootBag)
+
+	-- Some bags hold kit as well as cash. Anything the player can't carry is
+	-- simply not granted: a vault is not a reason to exceed a weight limit.
+	if math.random() < LootConfig.HeistGearChance then
+		LootService.grantToPlayer(player, LootService.roll("HeistVaultGear"))
+	end
 
 	broadcast(siteId, "Looting", { LootRemaining = instance.LootRemaining, ClaimedBagId = lootBagId })
 
