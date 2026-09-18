@@ -31,6 +31,11 @@ local Items: { [string]: ItemDefinition } = {
 	Shotgun = { DisplayName = "Shotgun", Weight = 8, Value = 1000, MaxStack = 1, Category = "Weapon" },
 	Rifle = { DisplayName = "Rifle", Weight = 9, Value = 1600, MaxStack = 1, Category = "Weapon" },
 	MachineGun = { DisplayName = "Machine Gun", Weight = 11, Value = 2200, MaxStack = 1, Category = "Weapon" },
+	-- Anti-armor. The launcher is heavy and the rounds are heavier: carrying the
+	-- counter to a 3000 HP vehicle costs 15 lb plus 9 lb a rocket, so a crew that
+	-- brings one brings less of everything else. That weight IS the balance.
+	RPGLauncher = { DisplayName = "RPG Launcher", Weight = 15, Value = 4000, MaxStack = 1, Category = "Weapon" },
+	RocketRound = { DisplayName = "Rocket", Weight = 9, Value = 900, MaxStack = 4, Category = "Kit" },
 
 	-- Job kit.
 	Medkit = { DisplayName = "Medkit", Weight = 5, Value = 150, MaxStack = 4, Category = "Kit" },

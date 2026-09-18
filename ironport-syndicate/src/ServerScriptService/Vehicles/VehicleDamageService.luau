@@ -88,7 +88,14 @@ local function currentBaseSpeed(model: Model): number
 	return if typeof(base) == "number" then base else 1
 end
 
-local function applyConcussionPenalty(model: Model, fraction: number, duration: number)
+-- Public so BlastService can apply wheel and tread damage from a near miss
+-- without owning the speed-layering rules, which live here.
+function VehicleDamageService.applyConcussion(model: Model)
+	local blast = ArmoredVehicleConfig.Blast
+	VehicleDamageService.applyConcussionPenalty(model, blast.SplashSpeedFraction, blast.SplashSpeedDurationSeconds)
+end
+
+function VehicleDamageService.applyConcussionPenalty(model: Model, fraction: number, duration: number)
 	speedPenalty[model] = (speedPenalty[model] or 1) * fraction
 	publishSpeed(model, currentBaseSpeed(model))
 
@@ -304,40 +311,11 @@ function VehicleDamageService.takeDamage(model: Model, rawDamage: number, damage
 	return applied
 end
 
--- An explosion at a point in the world. `directHit` is the vehicle the
--- projectile actually struck, if any; every other vehicle in the blast radius
--- takes splash — reduced damage plus wheel and tread damage as a speed penalty.
-function VehicleDamageService.applyBlast(
-	origin: Vector3,
-	rawDamage: number,
-	damageType: string?,
-	attacker: Player?,
-	directHit: Model?
-)
-	local resolvedType = damageType or "HeavyExplosive"
-
-	if directHit and directHit.Parent then
-		VehicleDamageService.takeDamage(directHit, rawDamage, resolvedType, attacker)
-	end
-
-	local blast = ArmoredVehicleConfig.Blast
-	local params = OverlapParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = if directHit then { directHit } else {}
-
-	local seen: { [Model]: boolean } = {}
-	for _, part in Workspace:GetPartBoundsInRadius(origin, blast.SplashRadiusStuds, params) do
-		local vehicle = VehicleService.findVehicleFromPart(part)
-		if not vehicle or seen[vehicle] or vehicle == directHit then
-			continue
-		end
-		seen[vehicle] = true
-
-		VehicleDamageService.takeDamage(vehicle, rawDamage * blast.SplashDamageFraction, resolvedType, attacker)
-		if vehicle.Parent and vehicle:GetAttribute("VehicleDestroyed") ~= true then
-			applyConcussionPenalty(vehicle, blast.SplashSpeedFraction, blast.SplashSpeedDurationSeconds)
-		end
-	end
-end
+-- Explosions themselves live in Combat/BlastService. They were here while
+-- vehicles were the only thing that could be caught in one, but a blast that
+-- only looked for vehicles would wreck a van and leave the crew standing beside
+-- it untouched. This module keeps what is genuinely vehicle-specific: the
+-- resistance conversion, damage states, and the speed layering that
+-- applyConcussion above hands back out.
 
 return VehicleDamageService

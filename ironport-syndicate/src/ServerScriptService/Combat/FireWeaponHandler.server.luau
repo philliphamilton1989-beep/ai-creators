@@ -29,6 +29,8 @@ local HeatService = require(script.Parent.Parent:WaitForChild("Core"):WaitForChi
 local VehicleService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
 local VehicleDamageService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleDamageService"))
 local TurretService = require(script.Parent.Parent:WaitForChild("Defense"):WaitForChild("TurretService"))
+local ProjectileService = require(script.Parent:WaitForChild("ProjectileService"))
+local InventoryService = require(script.Parent.Parent:WaitForChild("Inventory"):WaitForChild("InventoryService"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local combatRemotes = remotes:WaitForChild("CombatRemotes")
@@ -95,6 +97,30 @@ fireEvent.OnServerEvent:Connect(function(player: Player, direction: Vector3)
 
 	local origin = shotOrigin(character)
 	if not origin then
+		return
+	end
+
+	-- Projectile weapons consume a round from inventory and launch a simulated
+	-- shot instead of raycasting. The ammo check happens before the cooldown is
+	-- committed, so a dry launcher doesn't eat the player's next real shot.
+	if stats.Projectile then
+		local ammoId = stats.AmmoItemId
+		if not ammoId or not InventoryService.removeItem(player, ammoId, 1) then
+			return
+		end
+
+		lastFireTime[player] = now
+		ProjectileService.launch(
+			player,
+			origin,
+			direction.Unit,
+			stats.Damage,
+			stats.ProjectileSpeed or 90,
+			stats.BlastRadius or 15,
+			stats.Range,
+			stats.DamageType or "HeavyExplosive"
+		)
+		HeatService.add(player, 8) -- a rocket is louder than a rifle
 		return
 	end
 
