@@ -63,6 +63,12 @@
           "InventoryStateRemote": { "$className": "RemoteEvent" },
           "DropItemRemote": { "$className": "RemoteFunction" }
         },
+        "CargoRemotes": {
+          "$className": "Folder",
+          "StoreInVehicleRemote": { "$className": "RemoteFunction" },
+          "TakeFromVehicleRemote": { "$className": "RemoteFunction" },
+          "VehicleCargoStateRemote": { "$className": "RemoteEvent" }
+        },
         "FactionRemotes": {
           "$className": "Folder",
           "CreateCrewRemote": { "$className": "RemoteFunction" },

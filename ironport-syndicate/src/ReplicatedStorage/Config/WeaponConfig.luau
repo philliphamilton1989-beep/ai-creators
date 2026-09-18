@@ -39,6 +39,14 @@ local WeaponConfig: { [string]: WeaponStats } = {
 		Range = 1500,
 		FireRateSeconds = 0.11,
 	},
+	MachineGun = {
+		-- Sustained fire rather than burst damage; the 11 lb it costs to carry
+		-- (see InventoryConfig) is most of what balances it.
+		Damage = 16,
+		HeadshotMultiplier = 1.5,
+		Range = 1100,
+		FireRateSeconds = 0.07,
+	},
 }
 
 return WeaponConfig

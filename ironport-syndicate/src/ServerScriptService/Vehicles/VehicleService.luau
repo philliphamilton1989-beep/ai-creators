@@ -26,7 +26,9 @@ local core = script.Parent.Parent:WaitForChild("Core")
 local PlayerState = require(core:WaitForChild("PlayerState"))
 local DamageService = require(script.Parent.Parent:WaitForChild("Combat"):WaitForChild("DamageService"))
 local FactionService = require(script.Parent.Parent:WaitForChild("Factions"):WaitForChild("FactionService"))
+local InventoryService = require(script.Parent.Parent:WaitForChild("Inventory"):WaitForChild("InventoryService"))
 local VehicleConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("VehicleConfig"))
+local InventoryConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("InventoryConfig"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local vehicleRemotes = remotes:WaitForChild("VehicleRemotes")
@@ -46,6 +48,9 @@ type ActiveVehicle = {
 local VehicleService = {}
 
 local activeVehicles: { [Player]: ActiveVehicle } = {}
+-- Declared up here so despawn can clear it; the cargo API itself is at the
+-- bottom of the file.
+local cargo: { [Model]: { [string]: number } } = {}
 local lastSpawnAt: { [Player]: { [string]: number } } = {}
 local repairsInProgress: { [Model]: true } = {}
 local warnedMissingAssets: { [string]: true } = {}
@@ -191,6 +196,9 @@ local function despawnModel(model: Model)
 		end
 	end
 	repairsInProgress[model] = nil
+	-- Whatever was loaded goes with it. Cargo is not recoverable from a wreck,
+	-- which is the risk that makes hauling a decision.
+	cargo[model] = nil
 
 	-- Destroying the model out from under a seated player leaves them stuck
 	-- with Sit = true and no seat to stand up from.
@@ -494,6 +502,147 @@ Players.PlayerRemoving:Connect(function(player)
 	end
 	activeVehicles[player] = nil
 	lastSpawnAt[player] = nil
+end)
+
+--[[ Cargo ]]
+
+-- Cargo lives here rather than in InventoryService because this module already
+-- owns the vehicle's lifecycle — a wreck or a despawn has to take its contents
+-- with it, and that's this file's job to notice.
+local cargoRemotes = remotes:WaitForChild("CargoRemotes")
+local storeInVehicleRemote = cargoRemotes:WaitForChild("StoreInVehicleRemote") :: RemoteFunction
+local takeFromVehicleRemote = cargoRemotes:WaitForChild("TakeFromVehicleRemote") :: RemoteFunction
+local cargoStateRemote = cargoRemotes:WaitForChild("VehicleCargoStateRemote") :: RemoteEvent
+
+local function cargoWeight(contents: { [string]: number }): number
+	local total = 0
+	for itemId, count in contents do
+		local definition = InventoryConfig.Items[itemId]
+		if definition then
+			total += definition.Weight * count
+		end
+	end
+	return total
+end
+
+local function pushCargoState(player: Player, model: Model?)
+	if not model then
+		cargoStateRemote:FireClient(player, { Contents = {}, Weight = 0, Capacity = 0, HasVehicle = false })
+		return
+	end
+	local contents = cargo[model] or {}
+	cargoStateRemote:FireClient(player, {
+		Contents = contents,
+		Weight = cargoWeight(contents),
+		Capacity = InventoryConfig.VehicleCargoCapacity,
+		HasVehicle = true,
+	})
+end
+
+-- The vehicle a player may load from or into: their own active one, and only
+-- while they're standing next to it.
+local function accessibleVehicle(player: Player): Model?
+	local active = activeVehicles[player]
+	local model = active and active.Model
+	if not model or not model.Parent then
+		return nil
+	end
+	if model:GetAttribute("VehicleDestroyed") == true then
+		return nil
+	end
+	if not canOperate(player, model) or not isNear(player, model) then
+		return nil
+	end
+	return model
+end
+
+function VehicleService.getCargo(model: Model): { [string]: number }
+	return cargo[model] or {}
+end
+
+storeInVehicleRemote.OnServerInvoke = function(player: Player, itemId: string, count: number): (boolean, string)
+	if typeof(itemId) ~= "string" or typeof(count) ~= "number" then
+		return false, "InvalidArgs"
+	end
+	count = math.floor(count)
+	if count <= 0 then
+		return false, "InvalidCount"
+	end
+
+	local definition = InventoryConfig.Items[itemId]
+	if not definition then
+		return false, "UnknownItem"
+	end
+
+	local model = accessibleVehicle(player)
+	if not model then
+		return false, "NoVehicleInReach"
+	end
+
+	local contents = cargo[model]
+	if not contents then
+		contents = {}
+		cargo[model] = contents
+	end
+
+	if cargoWeight(contents) + definition.Weight * count > InventoryConfig.VehicleCargoCapacity then
+		return false, "VehicleFull"
+	end
+
+	-- Remove from the player first: if that fails they never had it, and nothing
+	-- should appear in the vehicle.
+	if not InventoryService.removeItem(player, itemId, count) then
+		return false, "NotHeld"
+	end
+
+	contents[itemId] = (contents[itemId] or 0) + count
+	pushCargoState(player, model)
+	return true, "Stored"
+end
+
+takeFromVehicleRemote.OnServerInvoke = function(player: Player, itemId: string, count: number): (boolean, string)
+	if typeof(itemId) ~= "string" or typeof(count) ~= "number" then
+		return false, "InvalidArgs"
+	end
+	count = math.floor(count)
+	if count <= 0 then
+		return false, "InvalidCount"
+	end
+
+	local model = accessibleVehicle(player)
+	if not model then
+		return false, "NoVehicleInReach"
+	end
+
+	local contents = cargo[model]
+	local held = contents and contents[itemId] or 0
+	if held < count then
+		return false, "NotInVehicle"
+	end
+
+	-- Add to the player first: tryAddItem enforces their own weight and stack
+	-- limits, and a refusal must leave the vehicle's contents untouched.
+	local added, reason = InventoryService.tryAddItem(player, itemId, count)
+	if not added then
+		return false, reason
+	end
+
+	local remaining = held - count
+	;(contents :: { [string]: number })[itemId] = if remaining > 0 then remaining else nil
+	pushCargoState(player, model)
+	return true, "Taken"
+end
+
+-- Pushed on a timer rather than on proximity events: walking in and out of range
+-- is continuous, and this is a cheap way to keep the panel honest without
+-- wiring a region check to every vehicle.
+task.spawn(function()
+	while true do
+		task.wait(1)
+		for _, player in Players:GetPlayers() do
+			pushCargoState(player, accessibleVehicle(player))
+		end
+	end
 end)
 
 return VehicleService
