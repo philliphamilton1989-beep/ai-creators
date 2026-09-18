@@ -14,6 +14,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local CombatInputLock = require(script.Parent:WaitForChild("CombatInputLock"))
+
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
 
@@ -48,6 +50,12 @@ end
 
 local function onFireAction(_actionName: string, inputState: Enum.UserInputState): Enum.ContextActionResult
 	if inputState ~= Enum.UserInputState.Begin then
+		return Enum.ContextActionResult.Pass
+	end
+
+	-- Manually piloting a turret owns the trigger while it's active; without
+	-- this, the same click would also discharge the player's own weapon.
+	if CombatInputLock.locked then
 		return Enum.ContextActionResult.Pass
 	end
 

@@ -16,6 +16,18 @@ function Numeric.isFinite(value: any): boolean
 	return value == value and value ~= math.huge and value ~= -math.huge
 end
 
+-- As isFinite, but for a Vector3 arriving from a client (an aim or fire
+-- direction). NaN in any component makes Magnitude NaN too, which fails every
+-- comparison including with itself — so it slips past a plain
+-- `Magnitude == 0` guard and reaches Workspace:Raycast.
+function Numeric.isFiniteVector(value: any): boolean
+	if typeof(value) ~= "Vector3" then
+		return false
+	end
+	local magnitude = value.Magnitude
+	return magnitude == magnitude and magnitude > 0 and magnitude ~= math.huge
+end
+
 -- Returns a whole, positive, finite amount, or nil if the input can't be one.
 -- Cash is always an integer: fractional currency has no representation in the
 -- UI and accumulates rounding drift across laundering and treasury splits.

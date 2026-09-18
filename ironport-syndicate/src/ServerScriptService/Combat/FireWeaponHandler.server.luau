@@ -23,6 +23,7 @@ local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local WeaponConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("WeaponConfig"))
+local Numeric = require(ReplicatedStorage:WaitForChild("Libraries"):WaitForChild("Numeric"))
 local DamageService = require(script.Parent:WaitForChild("DamageService"))
 local PlayerState = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("PlayerState"))
 local HeatService = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("HeatService"))
@@ -39,13 +40,6 @@ local fireEvent = combatRemotes:WaitForChild("FireWeaponRemote") :: RemoteEvent
 local equipRemote = combatRemotes:WaitForChild("EquipWeaponRemote") :: RemoteFunction
 
 local lastFireTime: { [Player]: number } = {}
-
-local function isFiniteVector(value: Vector3): boolean
-	-- NaN fails every comparison with itself, so it slips past a plain
-	-- `Magnitude == 0` guard and reaches Workspace:Raycast.
-	local magnitude = value.Magnitude
-	return magnitude == magnitude and magnitude > 0 and magnitude ~= math.huge
-end
 
 local function shotOrigin(character: Model): Vector3?
 	local head = character:FindFirstChild("Head") :: BasePart?
@@ -69,7 +63,7 @@ equipRemote.OnServerInvoke = function(player: Player, weaponId: string): (boolea
 end
 
 fireEvent.OnServerEvent:Connect(function(player: Player, direction: Vector3)
-	if typeof(direction) ~= "Vector3" or not isFiniteVector(direction) then
+	if typeof(direction) ~= "Vector3" or not Numeric.isFiniteVector(direction) then
 		return
 	end
 
