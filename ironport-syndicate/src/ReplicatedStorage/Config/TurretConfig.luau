@@ -1,15 +1,20 @@
 --!strict
 -- Automated defensive turrets, modelled on ARK's.
 --
+-- There is one turret. ARK ships a Heavy tier alongside the standard one, but
+-- its job there is to give a big base a reason to spend its turret budget
+-- differently — and that only pays off once players have been building for
+-- weeks. A second tier bought here would be a second set of numbers to balance
+-- against the Raider, the RPG and each other, for a choice nobody is equipped
+-- to make yet. One gun, tuned properly, is the honest version.
+--
 -- What's worth copying from ARK isn't the damage numbers, it's the three rules
 -- that stop turrets becoming an unbeatable wall. Any one of them missing and
 -- defense degenerates:
 --
 --  1. A DENSITY CAP. Without a limit on turrets per area, the winning move is
 --     always "add another turret", and a well-funded crew becomes unraidable by
---     arithmetic rather than skill. ARK caps them per radius, and Heavy turrets
---     count as several — so the cap is a real budget, spent on few strong guns
---     or many weak ones.
+--     arithmetic rather than skill.
 --  2. POWER. A turret line that needs a generator gives raiders something to
 --     attack other than the guns themselves. Without it the only counterplay is
 --     grinding through the ammo, which is a timer rather than a tactic. With it,
@@ -17,10 +22,10 @@
 --  3. TARGETING MODES. Defenders decide what their guns engage, so a turret
 --     covering a driveway isn't wasting its drum on someone walking past.
 --
--- The Standard turret's 15 damage is a contract with the Raider: 15 against a
--- 0.4 ballistic multiplier is 6 net, so 3000 HP takes exactly 500 hits, which
--- is the "2-3 magazines to breach" the armored vehicle was designed around.
--- Change one and you change the other.
+-- The 15 damage is a contract with the Raider: 15 against a 0.4 ballistic
+-- multiplier is 6 net, so 3000 HP takes exactly 500 hits, which is the "2-3
+-- magazines to breach" the armored vehicle was designed around. Change one and
+-- you change the other.
 
 export type TurretTier = {
 	DisplayName: string,
@@ -32,13 +37,13 @@ export type TurretTier = {
 	ReloadSeconds: number,
 	AcquisitionSeconds: number,
 	Health: number,
-	-- How much of the area's turret budget this consumes. Heavy guns cost more
-	-- than their firepower advantage, so stacking them is a real decision.
-	CapCost: number,
 	-- Drawn from the generator while online.
 	PowerDraw: number,
 }
 
+-- Still a table rather than a bare set of fields: a turret carries a TurretTier
+-- attribute naming its entry, so a second gun is a new entry here plus a
+-- weighted cost in the density cap, and nothing in TurretService changes.
 local Tiers: { [string]: TurretTier } = {
 	Standard = {
 		DisplayName = "Autoturret",
@@ -50,34 +55,7 @@ local Tiers: { [string]: TurretTier } = {
 		ReloadSeconds = 4,
 		AcquisitionSeconds = 0.6,
 		Health = 800,
-		CapCost = 1,
 		PowerDraw = 1,
-	},
-
-	-- Costs four slots, so it has to be worth four Standards or nobody would
-	-- ever build one. Deliberately tuned to near-parity on damage (250 dps
-	-- against their 240) and differentiated on everything else:
-	--
-	--   better  — 260 range against 180, and one hard target instead of four
-	--             soft ones
-	--   worse   — 360 rounds against 3200, so it runs dry in about a quarter
-	--             the time and demands constant restocking
-	--
-	-- A wall of Standards is a siege you grind down. A Heavy line hits harder
-	-- and further but has to be fed, which is what makes the choice interesting
-	-- rather than arithmetic.
-	Heavy = {
-		DisplayName = "Heavy Autoturret",
-		Damage = 55,
-		FireRateSeconds = 0.22,
-		RangeStuds = 260,
-		MagazineSize = 120,
-		ReserveMagazines = 2,
-		ReloadSeconds = 7,
-		AcquisitionSeconds = 1,
-		Health = 2200,
-		CapCost = 4,
-		PowerDraw = 4,
 	},
 }
 
@@ -91,13 +69,19 @@ local TargetModes: { [string]: { Players: boolean, Vehicles: boolean } } = {
 
 return {
 	Tiers = Tiers,
+	DefaultTier = "Standard",
 	TargetModes = TargetModes,
 	DefaultTargetMode = "Everything",
 
-	-- The budget, and the area it applies over. Tuned for a 1.2 km district: a
-	-- safehouse can be genuinely well defended, but not walled off. Turrets past
-	-- the cap stay inert rather than being refused, so a level or a player can't
-	-- get into a state where a placed turret silently doesn't exist.
+	-- With one gun the cap is simply a count: at most this many turrets inside
+	-- the radius, and the rest sit inert. Tuned for a 1.2 km district — a
+	-- safehouse can be genuinely well defended, but not walled off. Twelve guns
+	-- all bearing on one approach is 288 net DPS against the Raider's armor,
+	-- which kills it in about ten seconds of full exposure: survivable if the
+	-- driver keeps moving and uses cover, fatal if they park.
+	--
+	-- Turrets past the cap stay inert rather than being refused, so a level or a
+	-- player can't get into a state where a placed turret silently doesn't exist.
 	DensityCap = 12,
 	DensityRadiusStuds = 140,
 

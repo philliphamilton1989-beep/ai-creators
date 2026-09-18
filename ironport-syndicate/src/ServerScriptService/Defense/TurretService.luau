@@ -1,9 +1,8 @@
 --!strict
 -- Automated turrets: target acquisition, firing, ammo, and being shot back at.
 --
--- A turret is any Model under Workspace.Turrets with a TurretTier attribute
--- naming a tier in TurretConfig. Ownership is optional and decides who it
--- shoots:
+-- A turret is any Model under Workspace.Turrets. Ownership is optional and
+-- decides who it shoots:
 --
 --   OwnerUserId  — a player's turret. Ignores them and their crew.
 --   OwnerCrewId  — a crew's turret. Ignores that crew.
@@ -59,9 +58,12 @@ end
 --[[ Density cap ]]
 
 -- Without a cap the winning move is always "add another turret", and a
--- well-funded crew becomes unraidable by arithmetic rather than skill. The
--- budget is spent per area, and Heavy turrets cost four slots — so the choice is
--- a few strong guns or many weak ones, never simply more.
+-- well-funded crew becomes unraidable by arithmetic rather than skill. With one
+-- turret tier the cap is a straight count: at most DensityCap guns inside
+-- DensityRadiusStuds of each other, and the rest sit inert.
+--
+-- If a second tier is ever added, this becomes a weighted budget — give the tier
+-- a CapCost and sum that instead of adding 1 — and nothing else here changes.
 --
 -- Turrets over the cap go inert rather than being refused registration: a
 -- silently missing turret is far harder to diagnose than a visible dead one.
@@ -83,12 +85,11 @@ local function recomputeDensity()
 				continue
 			end
 			if (other.Anchor.Position - state.Anchor.Position).Magnitude <= TurretConfig.DensityRadiusStuds then
-				spent += TurretConfig.Tiers[other.TierName].CapCost
+				spent += 1
 			end
 		end
 
-		local cost = TurretConfig.Tiers[state.TierName].CapCost
-		local suppressed = spent + cost > TurretConfig.DensityCap
+		local suppressed = spent + 1 > TurretConfig.DensityCap
 		state.Suppressed = suppressed
 		state.Model:SetAttribute("TurretSuppressed", suppressed)
 	end
@@ -387,11 +388,12 @@ local function registerTurret(instance: Instance)
 		return
 	end
 
-	local tierName = instance:GetAttribute("TurretTier")
-	if typeof(tierName) ~= "string" then
-		warn(("TurretService: %s has no TurretTier attribute; skipping"):format(instance:GetFullName()))
-		return
-	end
+	-- A missing attribute means the default tier: with one gun in the game,
+	-- making every level builder tag every turret by hand buys nothing but a
+	-- chance to forget. A tier that IS named and doesn't exist is a typo, and
+	-- still refuses to load rather than quietly becoming something else.
+	local attribute = instance:GetAttribute("TurretTier")
+	local tierName = if typeof(attribute) == "string" then attribute else TurretConfig.DefaultTier
 	local tier = TurretConfig.Tiers[tierName]
 	if not tier then
 		warn(("TurretService: %s names unknown tier %q"):format(instance:GetFullName(), tierName))
