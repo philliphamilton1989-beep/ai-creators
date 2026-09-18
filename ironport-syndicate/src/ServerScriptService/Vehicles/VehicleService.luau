@@ -255,7 +255,7 @@ local destructionRng = Random.new()
 -- Called by VehicleDamageService when health reaches zero. Exposed rather than
 -- local because damage resolution lives there while the vehicle's life is owned
 -- here, and only one of those two should be able to end it.
-function VehicleService.destroy(model: Model, attacker: Player?)
+function VehicleService.destroy(model: Model, attacker: Player?, lethalToOccupants: boolean?)
 	if model:GetAttribute("VehicleDestroyed") == true then
 		return
 	end
@@ -288,9 +288,19 @@ function VehicleService.destroy(model: Model, attacker: Player?)
 	-- respects the downed/bleedout state machine instead of killing outright.
 	-- Cover is cleared by the ejection, so the blast is never absorbed by the
 	-- armor that just failed.
+	--
+	-- Ordnance is the exception: a missile that destroyed the vehicle kills the
+	-- crew rather than ragdolling them clear with a survivable wound. Setting
+	-- Health directly deliberately bypasses the bleedout state machine — there
+	-- is no downed state to be revived from inside a vehicle that just
+	-- detonated. Humanoid.Died still fires, so gear still drops.
 	for _, occupant in ejectAllOccupants(model) do
-		local blast = destructionRng:NextInteger(minDamage, maxDamage)
-		DamageService.processDamage(occupant, blast, attacker, false, "Explosive")
+		if lethalToOccupants then
+			occupant.Health = 0
+		else
+			local blast = destructionRng:NextInteger(minDamage, maxDamage)
+			DamageService.processDamage(occupant, blast, attacker, false, "Explosive")
+		end
 	end
 
 	pushState(model, "Destroyed")
