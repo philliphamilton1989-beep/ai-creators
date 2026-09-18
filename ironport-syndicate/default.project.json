@@ -61,7 +61,8 @@
         "InventoryRemotes": {
           "$className": "Folder",
           "InventoryStateRemote": { "$className": "RemoteEvent" },
-          "DropItemRemote": { "$className": "RemoteFunction" }
+          "DropItemRemote": { "$className": "RemoteFunction" },
+          "BuyCargoInsuranceRemote": { "$className": "RemoteFunction" }
         },
         "CargoRemotes": {
           "$className": "Folder",

@@ -35,6 +35,7 @@ export type SavedFields = {
 	GangRank: string?,
 	OwnedVehicles: { [string]: boolean }?,
 	Inventory: { [string]: number }?,
+	HasCargoInsurance: boolean?,
 	PlaytimeSeconds: number?,
 	LastRaidedAt: number?,
 }
@@ -48,6 +49,8 @@ export type State = {
 	OwnedVehicles: { [string]: boolean },
 	-- Carried gear, itemId -> count. Weight-limited; see InventoryService.
 	Inventory: { [string]: number },
+	-- Bought in advance with Clean Cash, consumed by the death it protects.
+	HasCargoInsurance: boolean,
 	-- Server's record of what the player is holding. Never taken from the
 	-- client at fire time: a client-supplied weapon id is a free damage upgrade.
 	EquippedWeaponId: string,
@@ -105,6 +108,7 @@ function PlayerState.init(player: Player, loaded: SavedFields?): State
 		Inventory = if loaded and typeof(loaded.Inventory) == "table"
 			then loaded.Inventory :: { [string]: number }
 			else { Sidearm = 1 },
+		HasCargoInsurance = (loaded and loaded.HasCargoInsurance) == true,
 		EquippedWeaponId = "Sidearm",
 		IsDowned = false,
 		InSafehouse = false,
@@ -176,6 +180,7 @@ function PlayerState.pushOwnerView(player: Player)
 		StreetCash = state.StreetCash,
 		GangId = state.GangId,
 		GangRank = state.GangRank,
+		HasCargoInsurance = state.HasCargoInsurance,
 	})
 end
 
