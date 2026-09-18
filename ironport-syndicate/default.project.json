@@ -64,6 +64,11 @@
           "DropItemRemote": { "$className": "RemoteFunction" },
           "BuyCargoInsuranceRemote": { "$className": "RemoteFunction" }
         },
+        "PawnRemotes": {
+          "$className": "Folder",
+          "SellItemRemote": { "$className": "RemoteFunction" },
+          "ShopStateRemote": { "$className": "RemoteEvent" }
+        },
         "CargoRemotes": {
           "$className": "Folder",
           "StoreInVehicleRemote": { "$className": "RemoteFunction" },

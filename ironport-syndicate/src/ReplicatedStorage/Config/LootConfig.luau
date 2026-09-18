@@ -67,6 +67,53 @@ local Tables: { [string]: LootTable } = {
 		},
 	},
 
+	-- Street level: what's lying around in the open. Mostly junk, which is the
+	-- point — it gives a broke player something to sell without making the open
+	-- street competitive with the places worth searching.
+	ValuableStreet = {
+		DisplayName = "Street Find",
+		RollsMin = 1,
+		RollsMax = 2,
+		Entries = {
+			{ ItemId = "BrokenToy", Weight = 34, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "PlasticToy", Weight = 26, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "OldPhone", Weight = 22, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "CopperPipe", Weight = 18, MinCount = 1, MaxCount = 2 },
+		},
+	},
+
+	-- Back alleys: electronics and household goods. Real money, and heavy enough
+	-- that clearing an alley is a decision about what to leave.
+	ValuableAlley = {
+		DisplayName = "Alley Stash",
+		RollsMin = 1,
+		RollsMax = 3,
+		Entries = {
+			{ ItemId = "Laptop", Weight = 24, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "GameConsole", Weight = 20, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "PowerTools", Weight = 18, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "FlatscreenTV", Weight = 14, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "SilverCandlestick", Weight = 14, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "OldPhone", Weight = 10, MinCount = 1, MaxCount = 2 },
+		},
+	},
+
+	-- Hidden caches: rooftops, locked rooms, the places you need a lockpick and
+	-- a reason to be there. Light and precious — the best haul per pound in the
+	-- game, and worth the walk.
+	ValuableHidden = {
+		DisplayName = "Hidden Cache",
+		RollsMin = 1,
+		RollsMax = 2,
+		Entries = {
+			{ ItemId = "GoldWatch", Weight = 30, MinCount = 1, MaxCount = 2 },
+			{ ItemId = "DiamondRing", Weight = 22, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "AntiqueVase", Weight = 20, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "BearerBonds", Weight = 12, MinCount = 1, MaxCount = 1 },
+			{ ItemId = "SilverCandlestick", Weight = 16, MinCount = 1, MaxCount = 2 },
+		},
+	},
+
 	-- Rolled alongside the cash in a heist loot bag, so a vault pays in kit as
 	-- well as money.
 	HeistVaultGear = {

@@ -23,8 +23,11 @@ local playerGui = player:WaitForChild("PlayerGui")
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local inventoryRemotes = remotes:WaitForChild("InventoryRemotes")
 local cargoRemotes = remotes:WaitForChild("CargoRemotes")
+local pawnRemotes = remotes:WaitForChild("PawnRemotes")
 local inventoryStateRemote = inventoryRemotes:WaitForChild("InventoryStateRemote") :: RemoteEvent
 local dropItemRemote = inventoryRemotes:WaitForChild("DropItemRemote") :: RemoteFunction
+local sellItemRemote = pawnRemotes:WaitForChild("SellItemRemote") :: RemoteFunction
+local shopStateRemote = pawnRemotes:WaitForChild("ShopStateRemote") :: RemoteEvent
 local cargoStateRemote = cargoRemotes:WaitForChild("VehicleCargoStateRemote") :: RemoteEvent
 local storeInVehicleRemote = cargoRemotes:WaitForChild("StoreInVehicleRemote") :: RemoteFunction
 local takeFromVehicleRemote = cargoRemotes:WaitForChild("TakeFromVehicleRemote") :: RemoteFunction
@@ -49,6 +52,7 @@ local cargoContents: { [string]: number } = {}
 local cargoWeight = 0
 local cargoCapacity = InventoryConfig.VehicleCargoCapacity
 local vehicleInReach = false
+local shop: { [string]: any }? = nil
 
 local function addRounded(parent: Instance, radius: number)
 	local corner = Instance.new("UICorner")
@@ -255,7 +259,10 @@ local function buildRow(
 	weight.TextSize = 11
 	weight.TextColor3 = TEXT_DIM
 	weight.TextXAlignment = Enum.TextXAlignment.Left
-	weight.Text = ("%d LB  ·  %s"):format(definition.Weight * count, definition.Category)
+	-- Value per pound is the number that actually drives the decision at a
+	-- carry limit, so it's shown rather than left for the player to work out.
+	local density = if definition.Weight > 0 then definition.Value / definition.Weight else 0
+	weight.Text = ("%d LB  ·  %d ea  ·  %d/LB"):format(definition.Weight * count, definition.Value, density)
 	weight.Parent = row
 
 	local action = Instance.new("TextButton")
@@ -305,6 +312,15 @@ local function clear(scroll: ScrollingFrame)
 end
 
 local function render()
+	if shop then
+		title.Text = ("CARRIED  ·  %s PAYS %d%%"):format(
+			string.upper(tostring(shop.DisplayName)),
+			math.floor((shop.PayoutRate or 0) * 100)
+		)
+	else
+		title.Text = "CARRIED"
+	end
+
 	weightLabel.Text = ("%d / %d LB"):format(carriedWeight, capacity)
 
 	local ratio = if capacity > 0 then math.clamp(carriedWeight / capacity, 0, 1) else 0
@@ -315,9 +331,26 @@ local function render()
 	if isEmpty(items) then
 		buildEmptyNotice(carriedScroll, "Carrying nothing.")
 	else
+		-- One action button, three meanings by context: a shop buys, a vehicle
+		-- stows, and otherwise you're just putting it down. Selling wins when
+		-- both are in reach, since that's why you walked to the shop.
 		for itemId, count in items do
-			buildRow(carriedScroll, itemId, count, if vehicleInReach then "STOW" else "DROP", TEXT_DIM, function()
-				if vehicleInReach then
+			local definition = InventoryConfig.Items[itemId]
+			local sellable = shop ~= nil and definition ~= nil and shop.Accepts[definition.Category] == true
+
+			local label, color
+			if sellable then
+				label, color = "SELL", BRASS
+			elseif vehicleInReach then
+				label, color = "STOW", TEXT_DIM
+			else
+				label, color = "DROP", TEXT_DIM
+			end
+
+			buildRow(carriedScroll, itemId, count, label, color, function()
+				if sellable then
+					sellItemRemote:InvokeServer(itemId, 1)
+				elseif vehicleInReach then
 					storeInVehicleRemote:InvokeServer(itemId, 1)
 				else
 					dropItemRemote:InvokeServer(itemId, 1)
@@ -371,6 +404,17 @@ cargoStateRemote.OnClientEvent:Connect(function(data)
 	cargoWeight = data.Weight or 0
 	cargoCapacity = data.Capacity or InventoryConfig.VehicleCargoCapacity
 	if screenGui.Enabled and (wasInReach ~= vehicleInReach or vehicleInReach) then
+		render()
+	end
+end)
+
+shopStateRemote.OnClientEvent:Connect(function(data)
+	if typeof(data) ~= "table" then
+		return
+	end
+	local wasInShop = shop ~= nil
+	shop = if data.InReach == true then data else nil
+	if screenGui.Enabled and (wasInShop ~= (shop ~= nil)) then
 		render()
 	end
 end)
