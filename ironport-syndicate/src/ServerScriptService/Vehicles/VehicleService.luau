@@ -28,6 +28,7 @@ local DamageService = require(script.Parent.Parent:WaitForChild("Combat"):WaitFo
 local FactionService = require(script.Parent.Parent:WaitForChild("Factions"):WaitForChild("FactionService"))
 local InventoryService = require(script.Parent.Parent:WaitForChild("Inventory"):WaitForChild("InventoryService"))
 local VehicleConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("VehicleConfig"))
+local ArmoredVehicleConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ArmoredVehicleConfig"))
 local InventoryConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("InventoryConfig"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -139,6 +140,32 @@ local function ejectOccupant(seat: VehicleSeat | Seat)
 	end
 end
 
+-- Armored cover is published as attributes on the CHARACTER rather than looked
+-- up by DamageService. DamageService is required by this module, so it can't
+-- require back without a cycle — and a character attribute is something it can
+-- already read with no new dependency at all.
+local function setOccupantCover(character: Model, model: Model?)
+	local profile: ArmoredVehicleConfig.ArmorProfile? = nil
+	if model then
+		local vehicleId = model:GetAttribute("VehicleId")
+		local stats = typeof(vehicleId) == "string" and VehicleConfig.Catalog[vehicleId] or nil
+		if stats and stats.ArmorProfile then
+			profile = ArmoredVehicleConfig.Profiles[stats.ArmorProfile]
+		end
+	end
+
+	if not profile then
+		character:SetAttribute("CoverBallisticMultiplier", nil)
+		character:SetAttribute("CoverPenetrationDamage", nil)
+		character:SetAttribute("CoverPenetrationMultiplier", nil)
+		return
+	end
+
+	character:SetAttribute("CoverBallisticMultiplier", profile.OccupantBallisticMultiplier)
+	character:SetAttribute("CoverPenetrationDamage", profile.WindowPenetrationDamage)
+	character:SetAttribute("CoverPenetrationMultiplier", profile.WindowPenetrationMultiplier)
+end
+
 -- A locked vehicle can still be physically sat in by anyone, so authority has
 -- to be enforced when the seat is taken, not just in the UI that offers it.
 local function guardSeats(model: Model)
@@ -147,19 +174,33 @@ local function guardSeats(model: Model)
 			continue
 		end
 		local seat = descendant :: VehicleSeat
+		local lastOccupantCharacter: Model? = nil
+
 		seat:GetPropertyChangedSignal("Occupant"):Connect(function()
 			local occupant = seat.Occupant
+
 			if not occupant then
+				-- Cover has to be cleared on the character who left, which the
+				-- seat no longer points at by the time this fires.
+				if lastOccupantCharacter then
+					setOccupantCover(lastOccupantCharacter, nil)
+					lastOccupantCharacter = nil
+				end
 				return
 			end
-			local character = occupant.Parent
+
+			local character = occupant.Parent :: Model?
 			local player = character and Players:GetPlayerFromCharacter(character)
-			if not player then
+			if not character or not player then
 				return
 			end
 			if not canOperate(player, model) then
 				ejectOccupant(seat)
+				return
 			end
+
+			lastOccupantCharacter = character
+			setOccupantCover(character, model)
 		end)
 	end
 end
@@ -209,7 +250,12 @@ local function despawnModel(model: Model)
 	model:Destroy()
 end
 
-local function destroyVehicle(model: Model)
+local destructionRng = Random.new()
+
+-- Called by VehicleDamageService when health reaches zero. Exposed rather than
+-- local because damage resolution lives there while the vehicle's life is owned
+-- here, and only one of those two should be able to end it.
+function VehicleService.destroy(model: Model, attacker: Player?)
 	if model:GetAttribute("VehicleDestroyed") == true then
 		return
 	end
@@ -225,10 +271,26 @@ local function destroyVehicle(model: Model)
 		end
 	end
 
+	-- Armored vehicles specify their own blast range; anything else uses the
+	-- flat catalog value.
+	local minDamage, maxDamage = VehicleConfig.DestructionOccupantDamage, VehicleConfig.DestructionOccupantDamage
+	local vehicleId = model:GetAttribute("VehicleId")
+	local stats = typeof(vehicleId) == "string" and VehicleConfig.Catalog[vehicleId] or nil
+	if stats and stats.ArmorProfile then
+		local profile = ArmoredVehicleConfig.Profiles[stats.ArmorProfile]
+		if profile then
+			minDamage = profile.DestructionOccupantDamageMin
+			maxDamage = profile.DestructionOccupantDamageMax
+		end
+	end
+
 	-- Anyone still riding takes the hit, routed through DamageService so it
 	-- respects the downed/bleedout state machine instead of killing outright.
+	-- Cover is cleared by the ejection, so the blast is never absorbed by the
+	-- armor that just failed.
 	for _, occupant in ejectAllOccupants(model) do
-		DamageService.processDamage(occupant, VehicleConfig.DestructionOccupantDamage, nil, false)
+		local blast = destructionRng:NextInteger(minDamage, maxDamage)
+		DamageService.processDamage(occupant, blast, attacker, false, "Explosive")
 	end
 
 	pushState(model, "Destroyed")
@@ -239,54 +301,73 @@ local function destroyVehicle(model: Model)
 	end)
 end
 
-function VehicleService.applyDamage(model: Model, damage: number, attacker: Player?)
-	if model:GetAttribute("VehicleDestroyed") == true then
-		return
-	end
-	local health = model:GetAttribute("VehicleHealth")
-	local maxHealth = model:GetAttribute("VehicleMaxHealth")
-	if typeof(health) ~= "number" or typeof(maxHealth) ~= "number" then
-		return
-	end
-
-	local remaining = math.max(0, health - damage)
-	model:SetAttribute("VehicleHealth", remaining)
-
-	if remaining <= 0 then
-		destroyVehicle(model)
-		return
-	end
-
-	setDisabled(model, remaining <= maxHealth * VehicleConfig.DisabledHealthFraction)
-	pushState(model, "Damaged")
+-- Lets VehicleDamageService publish a state change without reaching into this
+-- module's internals.
+function VehicleService.publishState(model: Model, event: string)
+	pushState(model, event)
 end
 
 --[[ Spawning ]]
 
-local function nearestSpawnPoint(player: Player): BasePart?
+-- Spawn points nearest-first, rather than just the nearest one: a blocked point
+-- should fall through to the next rather than failing the spawn outright.
+local function spawnPointsByDistance(player: Player): { BasePart }
 	local folder = Workspace:FindFirstChild("VehicleSpawns")
 	if not folder then
 		warnOnce("spawns", "no Workspace.VehicleSpawns folder found — vehicles can't be spawned until the level provides spawn points")
-		return nil
+		return {}
+	end
+
+	local points = {}
+	for _, child in folder:GetChildren() do
+		if child:IsA("BasePart") then
+			table.insert(points, child)
+		end
 	end
 
 	local root = characterRoot(player)
-	local best: BasePart? = nil
-	local bestDistance = math.huge
-	for _, child in folder:GetChildren() do
-		if not child:IsA("BasePart") then
-			continue
-		end
-		if not root then
-			return child
-		end
-		local distance = (child.Position - root.Position).Magnitude
-		if distance < bestDistance then
-			bestDistance = distance
-			best = child
+	if root then
+		local origin = root.Position
+		table.sort(points, function(a, b)
+			return (a.Position - origin).Magnitude < (b.Position - origin).Magnitude
+		end)
+	end
+	return points
+end
+
+-- True when the volume a vehicle would occupy is clear. Without this a spawn
+-- point placed slightly too close to geometry buries the vehicle in a wall,
+-- which for an anchored-then-unanchored chassis means either an unusable
+-- vehicle or one that is violently ejected by the physics solver.
+local function isSpawnClear(point: BasePart, footprint: Vector3, ignore: { Instance }): boolean
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = ignore
+	params.MaxParts = 1
+
+	local padded = footprint + Vector3.one * ArmoredVehicleConfig.SpawnClearancePadding
+	local center = point.CFrame * CFrame.new(0, point.Size.Y / 2 + padded.Y / 2, 0)
+
+	local hits = Workspace:GetPartBoundsInBox(center, padded, params)
+	for _, hit in hits do
+		-- Non-collidable decoration isn't an obstruction.
+		if hit.CanCollide then
+			return false
 		end
 	end
-	return best
+	return true
+end
+
+-- Bounding size of a prefab, used to test clearance before committing.
+local function modelFootprint(prefab: Model): Vector3
+	local ok, size = pcall(function()
+		local _, boxSize = prefab:GetBoundingBox()
+		return boxSize
+	end)
+	if ok and typeof(size) == "Vector3" then
+		return size
+	end
+	return Vector3.new(8, 6, 16)
 end
 
 local function ownsVehicle(player: Player, vehicleId: string): boolean
@@ -359,16 +440,32 @@ spawnRemote.OnServerInvoke = function(player: Player, vehicleId: string): (boole
 		return false, "PrefabMissing"
 	end
 
-	local spawnPoint = nearestSpawnPoint(player)
-	if not spawnPoint then
+	local points = spawnPointsByDistance(player)
+	if #points == 0 then
 		return false, "NoSpawnPoint"
 	end
 
 	-- One active vehicle per player: spawning replaces whatever they had out,
-	-- so the map doesn't fill with abandoned cars.
+	-- so the map doesn't fill with abandoned cars. Done before the clearance
+	-- test so the outgoing vehicle isn't what blocks the spot.
 	local existing = activeVehicles[player]
 	if existing and existing.Model.Parent then
 		despawnModel(existing.Model)
+	end
+
+	local footprint = modelFootprint(prefab)
+	local character = player.Character
+	local ignore: { Instance } = if character then { character } else {}
+
+	local spawnPoint: BasePart? = nil
+	for _, candidate in points do
+		if isSpawnClear(candidate, footprint, ignore) then
+			spawnPoint = candidate
+			break
+		end
+	end
+	if not spawnPoint then
+		return false, "AllSpawnPointsBlocked"
 	end
 
 	local model = prefab:Clone()
@@ -380,7 +477,7 @@ spawnRemote.OnServerInvoke = function(player: Player, vehicleId: string): (boole
 	model:SetAttribute("VehicleDestroyed", false)
 	model:SetAttribute("VehicleLocked", true)
 
-	model:PivotTo(spawnPoint.CFrame + Vector3.new(0, spawnPoint.Size.Y / 2 + 3, 0))
+	model:PivotTo(spawnPoint.CFrame * CFrame.new(0, spawnPoint.Size.Y / 2 + footprint.Y / 2, 0))
 	model.Parent = Workspace
 
 	guardSeats(model)

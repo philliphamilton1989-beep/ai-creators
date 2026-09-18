@@ -15,6 +15,9 @@ export type VehicleStats = {
 	RepairSeconds: number,
 	SpawnCooldownSeconds: number,
 	Seats: number,
+	-- Names a profile in ArmoredVehicleConfig. Absent means an ordinary vehicle:
+	-- damage lands flat and occupants are not protected.
+	ArmorProfile: string?,
 }
 
 local Catalog: { [string]: VehicleStats } = {
@@ -53,6 +56,21 @@ local Catalog: { [string]: VehicleStats } = {
 		RepairSeconds = 20,
 		SpawnCooldownSeconds = 90,
 		Seats = 4,
+	},
+
+	-- The raid vehicle: a bullet sponge for walking a crew through defensive
+	-- fire, not a win condition. 3000 HP against 60% ballistic resistance is
+	-- 500 turret hits at 15 damage a shot; explosives cut through it at 1.5x,
+	-- and the long cooldown means losing one costs a raid window, not a minute.
+	Raider = {
+		DisplayName = "Raider",
+		PurchaseCostCleanCash = 285000,
+		MaxHealth = 3000,
+		RepairCostPerHealth = 22,
+		RepairSeconds = 35,
+		SpawnCooldownSeconds = 600,
+		Seats = 4,
+		ArmorProfile = "AssaultArmor",
 	},
 }
 

@@ -112,11 +112,50 @@ function DamageService.resolveBleedout(player: Player, humanoid: Humanoid, reviv
 	bleedoutEvent:FireAllClients(player, false, 0)
 end
 
+-- Armored cover is published as attributes on the character by VehicleService
+-- when a player takes a seat. Read here rather than required, because
+-- VehicleService already depends on this module and the reverse would be a
+-- cycle — an attribute crosses that boundary with no dependency at all.
+--
+-- Full immunity to small arms would make an armored vehicle a rolling gun
+-- platform with no answer, so a heavy or precise hit penetrates the glass at
+-- reduced damage. Explosives ignore cover entirely; they're the intended
+-- counter.
+local function applyArmoredCover(character: Instance, damage: number, damageType: string): number
+	if damageType ~= "Ballistic" then
+		return damage
+	end
+
+	local multiplier = character:GetAttribute("CoverBallisticMultiplier")
+	if typeof(multiplier) ~= "number" then
+		return damage
+	end
+
+	local penetrationDamage = character:GetAttribute("CoverPenetrationDamage")
+	if typeof(penetrationDamage) == "number" and damage >= penetrationDamage then
+		local penetrationMultiplier = character:GetAttribute("CoverPenetrationMultiplier")
+		return damage * (if typeof(penetrationMultiplier) == "number" then penetrationMultiplier else 1)
+	end
+
+	return damage * multiplier
+end
+
 -- Returns true if the target died outright (no bleedout state applies — e.g. an NPC).
-function DamageService.processDamage(targetHumanoid: Humanoid, damage: number, attacker: Player?, isHeadshot: boolean): boolean
+function DamageService.processDamage(
+	targetHumanoid: Humanoid,
+	damage: number,
+	attacker: Player?,
+	isHeadshot: boolean,
+	damageType: string?
+): boolean
 	local character = targetHumanoid.Parent
 	if not character then
 		return false
+	end
+
+	damage = applyArmoredCover(character, damage, damageType or "Ballistic")
+	if damage <= 0 then
+		return false -- fully absorbed by armor
 	end
 
 	-- Never act on a corpse. Without this, shooting a body during the respawn

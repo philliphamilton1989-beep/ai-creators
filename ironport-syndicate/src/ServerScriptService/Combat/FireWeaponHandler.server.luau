@@ -27,6 +27,7 @@ local DamageService = require(script.Parent:WaitForChild("DamageService"))
 local PlayerState = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("PlayerState"))
 local HeatService = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("HeatService"))
 local VehicleService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
+local VehicleDamageService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleDamageService"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local combatRemotes = remotes:WaitForChild("CombatRemotes")
@@ -114,11 +115,11 @@ fireEvent.OnServerEvent:Connect(function(player: Player, direction: Vector3)
 		if hitHumanoid then
 			local isHeadshot = result.Instance.Name == "Head"
 			local damage = stats.Damage * (isHeadshot and stats.HeadshotMultiplier or 1)
-			DamageService.processDamage(hitHumanoid, damage, player, isHeadshot)
+			DamageService.processDamage(hitHumanoid, damage, player, isHeadshot, "Ballistic")
 		else
 			local vehicle = VehicleService.findVehicleFromPart(result.Instance)
 			if vehicle then
-				VehicleService.applyDamage(vehicle, stats.Damage, player)
+				VehicleDamageService.takeDamage(vehicle, stats.Damage, "Ballistic", player)
 			end
 		end
 	end
