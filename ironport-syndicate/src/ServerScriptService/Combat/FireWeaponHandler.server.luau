@@ -28,6 +28,7 @@ local PlayerState = require(script.Parent.Parent:WaitForChild("Core"):WaitForChi
 local HeatService = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("HeatService"))
 local VehicleService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
 local VehicleDamageService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleDamageService"))
+local TurretService = require(script.Parent.Parent:WaitForChild("Defense"):WaitForChild("TurretService"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local combatRemotes = remotes:WaitForChild("CombatRemotes")
@@ -120,6 +121,13 @@ fireEvent.OnServerEvent:Connect(function(player: Player, direction: Vector3)
 			local vehicle = VehicleService.findVehicleFromPart(result.Instance)
 			if vehicle then
 				VehicleDamageService.takeDamage(vehicle, stats.Damage, "Ballistic", player)
+			else
+				-- Turrets are destructible: a defense with no counter is a wall,
+				-- and a raid should be a fight rather than a timer.
+				local turret = TurretService.findTurretFromPart(result.Instance)
+				if turret then
+					TurretService.takeDamage(turret, stats.Damage, player)
+				end
 			end
 		end
 	end
