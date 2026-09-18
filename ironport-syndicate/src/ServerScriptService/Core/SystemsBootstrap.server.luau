@@ -27,6 +27,7 @@ local function startSystem(folderName: string, moduleName: string)
 end
 
 startSystem("Defense", "RaidService")
+startSystem("Defense", "PowerService")
 startSystem("Defense", "TurretService")
 startSystem("Economy", "LaunderingService")
 startSystem("Heists", "HeistService")

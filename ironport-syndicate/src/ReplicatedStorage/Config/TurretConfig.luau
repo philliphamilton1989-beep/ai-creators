@@ -1,33 +1,42 @@
 --!strict
--- Automated defensive turrets.
+-- Automated defensive turrets, modelled on ARK's.
 --
--- The damage number is load-bearing and not arbitrary. 15 per shot against the
--- Raider's 0.4 ballistic multiplier is 6 net, so 3000 HP takes exactly 500 hits
--- — 2.5 drums of 200, which is the "2-3 magazines to breach" the armored
--- vehicle was specified against. Changing either number breaks that contract, so
--- change them together.
+-- What's worth copying from ARK isn't the damage numbers, it's the three rules
+-- that stop turrets becoming an unbeatable wall. Any one of them missing and
+-- defense degenerates:
 --
--- The same 15 kills an unarmored player in under two seconds. That asymmetry is
--- the entire reason the Raider exists: infantry cannot walk a defended approach,
--- armor can. A turret that were merely annoying to infantry would make the
--- vehicle pointless, and one that shredded armor would make it a waste of money.
+--  1. A DENSITY CAP. Without a limit on turrets per area, the winning move is
+--     always "add another turret", and a well-funded crew becomes unraidable by
+--     arithmetic rather than skill. ARK caps them per radius, and Heavy turrets
+--     count as several — so the cap is a real budget, spent on few strong guns
+--     or many weak ones.
+--  2. POWER. A turret line that needs a generator gives raiders something to
+--     attack other than the guns themselves. Without it the only counterplay is
+--     grinding through the ammo, which is a timer rather than a tactic. With it,
+--     a smart raid pushes for the generator and the whole line goes dark.
+--  3. TARGETING MODES. Defenders decide what their guns engage, so a turret
+--     covering a driveway isn't wasting its drum on someone walking past.
 --
--- Turrets are destructible on purpose. A defense with no counter is a wall, and
--- the raid is supposed to be a fight rather than a timer.
+-- The Standard turret's 15 damage is a contract with the Raider: 15 against a
+-- 0.4 ballistic multiplier is 6 net, so 3000 HP takes exactly 500 hits, which
+-- is the "2-3 magazines to breach" the armored vehicle was designed around.
+-- Change one and you change the other.
 
 export type TurretTier = {
 	DisplayName: string,
 	Damage: number,
 	FireRateSeconds: number,
 	RangeStuds: number,
-	-- Rounds per magazine, and how many spare magazines it holds.
 	MagazineSize: number,
 	ReserveMagazines: number,
 	ReloadSeconds: number,
-	-- Time locked on a target before the first shot. The window that lets a
-	-- player sprint across an exposed gap and live.
 	AcquisitionSeconds: number,
 	Health: number,
+	-- How much of the area's turret budget this consumes. Heavy guns cost more
+	-- than their firepower advantage, so stacking them is a real decision.
+	CapCost: number,
+	-- Drawn from the generator while online.
+	PowerDraw: number,
 }
 
 local Tiers: { [string]: TurretTier } = {
@@ -41,40 +50,83 @@ local Tiers: { [string]: TurretTier } = {
 		ReloadSeconds = 4,
 		AcquisitionSeconds = 0.6,
 		Health = 800,
+		CapCost = 1,
+		PowerDraw = 1,
 	},
 
-	-- Heavier gun, shallower magazine. Better against armor per shot, worse at
-	-- sustaining a long siege, so stacking them isn't strictly better.
+	-- Costs four slots, so it has to be worth four Standards or nobody would
+	-- ever build one. Deliberately tuned to near-parity on damage (250 dps
+	-- against their 240) and differentiated on everything else:
+	--
+	--   better  — 260 range against 180, and one hard target instead of four
+	--             soft ones
+	--   worse   — 360 rounds against 3200, so it runs dry in about a quarter
+	--             the time and demands constant restocking
+	--
+	-- A wall of Standards is a siege you grind down. A Heavy line hits harder
+	-- and further but has to be fed, which is what makes the choice interesting
+	-- rather than arithmetic.
 	Heavy = {
 		DisplayName = "Heavy Autoturret",
-		Damage = 25,
-		FireRateSeconds = 0.45,
-		RangeStuds = 220,
+		Damage = 55,
+		FireRateSeconds = 0.22,
+		RangeStuds = 260,
 		MagazineSize = 120,
 		ReserveMagazines = 2,
-		ReloadSeconds = 6,
-		AcquisitionSeconds = 0.9,
-		Health = 1400,
+		ReloadSeconds = 7,
+		AcquisitionSeconds = 1,
+		Health = 2200,
+		CapCost = 4,
+		PowerDraw = 4,
 	},
+}
+
+-- What a turret is allowed to shoot at. Set per turret with a TargetMode
+-- attribute; anything unrecognised falls back to Everything.
+local TargetModes: { [string]: { Players: boolean, Vehicles: boolean } } = {
+	Everything = { Players = true, Vehicles = true },
+	PlayersOnly = { Players = true, Vehicles = false },
+	VehiclesOnly = { Players = false, Vehicles = true },
 }
 
 return {
 	Tiers = Tiers,
+	TargetModes = TargetModes,
+	DefaultTargetMode = "Everything",
 
-	-- Vehicles are shot before people. A turret that kept plinking at infantry
-	-- while an armored vehicle parked on its doorstep would never burn the ammo
-	-- the raid economy depends on.
+	-- The budget, and the area it applies over. Tuned for a 1.2 km district: a
+	-- safehouse can be genuinely well defended, but not walled off. Turrets past
+	-- the cap stay inert rather than being refused, so a level or a player can't
+	-- get into a state where a placed turret silently doesn't exist.
+	DensityCap = 12,
+	DensityRadiusStuds = 140,
+
+	-- Vehicles are shot before people. A turret plinking at infantry while an
+	-- armored vehicle parks on its doorstep would never burn the ammo the raid
+	-- economy depends on.
 	PreferVehicleTargets = true,
 
-	-- One AmmoBox from a player's inventory refills one magazine, which ties
-	-- defense to the same carry-weight economy as everything else: restocking a
-	-- turret line means hauling 15 lb a magazine.
+	-- One AmmoBox refills one magazine, which puts defense on the same
+	-- carry-weight economy as everything else: holding a turret line means
+	-- hauling 15 lb a magazine to it.
 	RoundsPerAmmoBox = 1,
-
-	-- How close an owner must stand to restock.
 	RestockRangeStuds = 12,
 
 	-- Turrets ignore downed players. Finishing someone is a decision another
 	-- player makes; a turret grinding a body is just noise.
 	IgnoreDownedTargets = true,
+
+	Power = {
+		-- How far a generator reaches. Smaller than turret range on purpose:
+		-- the generator sits inside the perimeter it powers, which is what makes
+		-- pushing to it a real objective.
+		GeneratorRadiusStuds = 120,
+		-- Fuel burned per second per unit of draw.
+		FuelPerPowerSecond = 0.02,
+		-- One FuelCan is worth this much fuel.
+		FuelPerCan = 300,
+		MaxFuel = 1200,
+		RefuelRangeStuds = 12,
+		GeneratorHealth = 1200,
+	},
 }

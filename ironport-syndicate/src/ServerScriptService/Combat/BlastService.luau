@@ -19,6 +19,7 @@ local DamageService = require(script.Parent:WaitForChild("DamageService"))
 local VehicleDamageService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleDamageService"))
 local VehicleService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
 local TurretService = require(script.Parent.Parent:WaitForChild("Defense"):WaitForChild("TurretService"))
+local PowerService = require(script.Parent.Parent:WaitForChild("Defense"):WaitForChild("PowerService"))
 
 local BlastService = {}
 
@@ -70,6 +71,7 @@ local function damageStructures(
 
 	local seenVehicles: { [Model]: boolean } = {}
 	local seenTurrets: { [Model]: boolean } = {}
+	local seenGenerators: { [Model]: boolean } = {}
 
 	for _, part in Workspace:GetPartBoundsInRadius(origin, radius, params) do
 		local distance = (part.Position - origin).Magnitude
@@ -93,6 +95,15 @@ local function damageStructures(
 		if turret and not seenTurrets[turret] then
 			seenTurrets[turret] = true
 			TurretService.takeDamage(turret, rawDamage * scale, attacker)
+			continue
+		end
+
+		-- A rocket through the generator darkens the whole line at once, which
+		-- is the fastest play a raid has against a well-built perimeter.
+		local generator = PowerService.findGeneratorFromPart(part)
+		if generator and not seenGenerators[generator] then
+			seenGenerators[generator] = true
+			PowerService.takeDamage(generator, rawDamage * scale, attacker)
 		end
 	end
 end

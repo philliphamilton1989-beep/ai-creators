@@ -30,6 +30,7 @@ local VehicleDamageService = require(script.Parent.Parent:WaitForChild("Vehicles
 local VehicleService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
 local FactionService = require(script.Parent.Parent:WaitForChild("Factions"):WaitForChild("FactionService"))
 local InventoryService = require(script.Parent.Parent:WaitForChild("Inventory"):WaitForChild("InventoryService"))
+local PowerService = require(script.Parent:WaitForChild("PowerService"))
 local TurretConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("TurretConfig"))
 
 local TurretService = {}
@@ -45,12 +46,52 @@ type TurretState = {
 	-- Current target and when it was first acquired, for the warm-up delay.
 	Target: Model?,
 	AcquiredAt: number,
+	-- Over the area's turret budget, so it sits inert.
+	Suppressed: boolean,
 }
 
 local turrets: { [Model]: TurretState } = {}
 
 local function tierOf(state: TurretState): TurretConfig.TurretTier
 	return TurretConfig.Tiers[state.TierName]
+end
+
+--[[ Density cap ]]
+
+-- Without a cap the winning move is always "add another turret", and a
+-- well-funded crew becomes unraidable by arithmetic rather than skill. The
+-- budget is spent per area, and Heavy turrets cost four slots — so the choice is
+-- a few strong guns or many weak ones, never simply more.
+--
+-- Turrets over the cap go inert rather than being refused registration: a
+-- silently missing turret is far harder to diagnose than a visible dead one.
+local function recomputeDensity()
+	local ordered: { TurretState } = {}
+	for _, state in turrets do
+		table.insert(ordered, state)
+	end
+	-- Stable order so the same turrets stay active across recomputes rather than
+	-- flickering as the table's iteration order changes.
+	table.sort(ordered, function(a, b)
+		return a.Model.Name < b.Model.Name
+	end)
+
+	for _, state in ordered do
+		local spent = 0
+		for _, other in ordered do
+			if other == state or other.Suppressed then
+				continue
+			end
+			if (other.Anchor.Position - state.Anchor.Position).Magnitude <= TurretConfig.DensityRadiusStuds then
+				spent += TurretConfig.Tiers[other.TierName].CapCost
+			end
+		end
+
+		local cost = TurretConfig.Tiers[state.TierName].CapCost
+		local suppressed = spent + cost > TurretConfig.DensityCap
+		state.Suppressed = suppressed
+		state.Model:SetAttribute("TurretSuppressed", suppressed)
+	end
 end
 
 --[[ Ownership ]]
@@ -104,6 +145,12 @@ local function acquireTarget(state: TurretState): Model?
 	local tier = tierOf(state)
 	local origin = state.Anchor.Position
 
+	-- Defenders decide what their guns engage, so a turret covering a driveway
+	-- isn't emptying its drum at someone walking past on foot.
+	local modeName = state.Model:GetAttribute("TargetMode")
+	local mode = TurretConfig.TargetModes[if typeof(modeName) == "string" then modeName else ""]
+		or TurretConfig.TargetModes[TurretConfig.DefaultTargetMode]
+
 	local bestVehicle: Model?, bestVehicleDist = nil, math.huge
 	local bestPlayer: Model?, bestPlayerDist = nil, math.huge
 
@@ -137,10 +184,10 @@ local function acquireTarget(state: TurretState): Model?
 		local seatPart = humanoid.SeatPart
 		local vehicle = seatPart and VehicleService.findVehicleFromPart(seatPart)
 		if vehicle and vehicle:GetAttribute("VehicleDestroyed") ~= true then
-			if distance < bestVehicleDist then
+			if mode.Vehicles and distance < bestVehicleDist then
 				bestVehicle, bestVehicleDist = vehicle, distance
 			end
-		elseif distance < bestPlayerDist then
+		elseif mode.Players and distance < bestPlayerDist then
 			bestPlayer, bestPlayerDist = character, distance
 		end
 	end
@@ -200,6 +247,9 @@ local function stepTurret(state: TurretState, now: number)
 	if state.Model:GetAttribute("TurretDestroyed") == true then
 		return
 	end
+	if state.Suppressed then
+		return -- over the area's turret budget
+	end
 	if state.RoundsInMagazine <= 0 and state.ReserveMagazines <= 0 then
 		return -- dry
 	end
@@ -208,6 +258,18 @@ local function stepTurret(state: TurretState, now: number)
 	end
 
 	local tier = tierOf(state)
+
+	-- No generator in reach, or no fuel in it, and the gun is a statue. This is
+	-- the counterplay that makes a raid a tactic rather than a timer: push the
+	-- generator and the whole line goes dark at once.
+	local powered = PowerService.requestPower(state.Anchor.Position, tier.PowerDraw)
+	if state.Model:GetAttribute("TurretPowered") ~= powered then
+		state.Model:SetAttribute("TurretPowered", powered)
+	end
+	if not powered then
+		state.Target = nil
+		return
+	end
 	local target = state.Target
 
 	-- Re-acquire when the current target is gone, dead, or out of range.
@@ -352,6 +414,7 @@ local function registerTurret(instance: Instance)
 		ReloadingUntil = 0,
 		Target = nil,
 		AcquiredAt = 0,
+		Suppressed = false,
 	}
 	turrets[instance] = state
 
@@ -373,6 +436,8 @@ local function registerTurret(instance: Instance)
 	prompt.Triggered:Connect(function(player: Player)
 		TurretService.restock(player, instance)
 	end)
+
+	recomputeDensity()
 end
 
 local function bindFolder(folder: Instance)
@@ -382,6 +447,8 @@ local function bindFolder(folder: Instance)
 	folder.ChildAdded:Connect(registerTurret)
 	folder.ChildRemoved:Connect(function(child)
 		turrets[child :: Model] = nil
+		-- A destroyed turret frees its slots, so a suppressed neighbour can wake.
+		recomputeDensity()
 	end)
 end
 

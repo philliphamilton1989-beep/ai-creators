@@ -42,6 +42,9 @@ local Items: { [string]: ItemDefinition } = {
 	BreachingCharge = { DisplayName = "Breaching Charge", Weight = 4, Value = 200, MaxStack = 4, Category = "Kit" },
 	Lockpick = { DisplayName = "Lockpick", Weight = 1, Value = 40, MaxStack = 10, Category = "Kit" },
 	AmmoBox = { DisplayName = "Ammo Box", Weight = 15, Value = 120, MaxStack = 8, Category = "Kit" },
+	-- Generator fuel. Heavy on purpose: keeping a turret line powered is a
+	-- hauling commitment, not a one-off purchase.
+	FuelCan = { DisplayName = "Fuel Can", Weight = 18, Value = 140, MaxStack = 6, Category = "Kit" },
 
 	-- Cargo. Heavy and bulk-priced: this is what a vehicle is for.
 	ScrapMetal = { DisplayName = "Scrap Metal", Weight = 12, Value = 60, MaxStack = 40, Category = "Cargo" },

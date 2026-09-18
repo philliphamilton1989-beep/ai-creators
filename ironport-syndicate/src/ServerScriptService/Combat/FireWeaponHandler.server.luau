@@ -29,6 +29,7 @@ local HeatService = require(script.Parent.Parent:WaitForChild("Core"):WaitForChi
 local VehicleService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
 local VehicleDamageService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleDamageService"))
 local TurretService = require(script.Parent.Parent:WaitForChild("Defense"):WaitForChild("TurretService"))
+local PowerService = require(script.Parent.Parent:WaitForChild("Defense"):WaitForChild("PowerService"))
 local ProjectileService = require(script.Parent:WaitForChild("ProjectileService"))
 local InventoryService = require(script.Parent.Parent:WaitForChild("Inventory"):WaitForChild("InventoryService"))
 
@@ -153,6 +154,12 @@ fireEvent.OnServerEvent:Connect(function(player: Player, direction: Vector3)
 				local turret = TurretService.findTurretFromPart(result.Instance)
 				if turret then
 					TurretService.takeDamage(turret, stats.Damage, player)
+				else
+					-- Killing the power is the whole point of there being power.
+					local generator = PowerService.findGeneratorFromPart(result.Instance)
+					if generator then
+						PowerService.takeDamage(generator, stats.Damage, player)
+					end
 				end
 			end
 		end
