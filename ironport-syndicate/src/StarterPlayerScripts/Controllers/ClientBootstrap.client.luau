@@ -4,3 +4,4 @@
 
 require(script.Parent:WaitForChild("FactionController"))
 require(script.Parent:WaitForChild("PlayerStateController"))
+require(script.Parent:WaitForChild("ShopController"))

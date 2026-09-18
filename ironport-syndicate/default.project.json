@@ -58,6 +58,11 @@
           "$className": "Folder",
           "HeistPhaseRemote": { "$className": "RemoteEvent" }
         },
+        "InventoryRemotes": {
+          "$className": "Folder",
+          "InventoryStateRemote": { "$className": "RemoteEvent" },
+          "DropItemRemote": { "$className": "RemoteFunction" }
+        },
         "FactionRemotes": {
           "$className": "Folder",
           "CreateCrewRemote": { "$className": "RemoteFunction" },
@@ -80,6 +85,8 @@
       "Economy": { "$path": "src/ServerScriptService/Economy" },
       "Factions": { "$path": "src/ServerScriptService/Factions" },
       "Heists": { "$path": "src/ServerScriptService/Heists" },
+      "Inventory": { "$path": "src/ServerScriptService/Inventory" },
+      "Monetization": { "$path": "src/ServerScriptService/Monetization" },
       "Vehicles": { "$path": "src/ServerScriptService/Vehicles" }
     },
     "ServerStorage": {

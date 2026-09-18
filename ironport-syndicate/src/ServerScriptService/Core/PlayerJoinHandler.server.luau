@@ -5,6 +5,8 @@ local PlayerState = require(script.Parent:WaitForChild("PlayerState"))
 local Persistence = require(script.Parent:WaitForChild("Persistence"))
 local FactionService = require(script.Parent.Parent:WaitForChild("Factions"):WaitForChild("FactionService"))
 local VehicleService = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("VehicleService"))
+local GamePassService = require(script.Parent.Parent:WaitForChild("Monetization"):WaitForChild("GamePassService"))
+local InventoryService = require(script.Parent.Parent:WaitForChild("Inventory"):WaitForChild("InventoryService"))
 
 -- BindToClose gets a limited window from Roblox; leave headroom rather than
 -- spending all of it waiting on stragglers.
@@ -38,6 +40,9 @@ Players.PlayerAdded:Connect(function(player)
 	-- connection ordering between two scripts isn't guaranteed.
 	FactionService.onPlayerReady(player)
 	VehicleService.onPlayerReady(player)
+	-- Pass ownership resolves before inventory, since capacity depends on it.
+	GamePassService.onPlayerReady(player)
+	InventoryService.onPlayerReady(player)
 end)
 
 Players.PlayerRemoving:Connect(function(player)

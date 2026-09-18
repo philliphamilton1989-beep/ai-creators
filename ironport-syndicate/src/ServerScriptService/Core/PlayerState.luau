@@ -34,6 +34,7 @@ export type SavedFields = {
 	GangId: string?,
 	GangRank: string?,
 	OwnedVehicles: { [string]: boolean }?,
+	Inventory: { [string]: number }?,
 	PlaytimeSeconds: number?,
 	LastRaidedAt: number?,
 }
@@ -45,6 +46,8 @@ export type State = {
 	GangId: string,
 	GangRank: string,
 	OwnedVehicles: { [string]: boolean },
+	-- Carried gear, itemId -> count. Weight-limited; see InventoryService.
+	Inventory: { [string]: number },
 	-- Server's record of what the player is holding. Never taken from the
 	-- client at fire time: a client-supplied weapon id is a free damage upgrade.
 	EquippedWeaponId: string,
@@ -99,6 +102,9 @@ function PlayerState.init(player: Player, loaded: SavedFields?): State
 		OwnedVehicles = if loaded and typeof(loaded.OwnedVehicles) == "table"
 			then loaded.OwnedVehicles :: { [string]: boolean }
 			else {},
+		Inventory = if loaded and typeof(loaded.Inventory) == "table"
+			then loaded.Inventory :: { [string]: number }
+			else { Sidearm = 1 },
 		EquippedWeaponId = "Sidearm",
 		IsDowned = false,
 		InSafehouse = false,

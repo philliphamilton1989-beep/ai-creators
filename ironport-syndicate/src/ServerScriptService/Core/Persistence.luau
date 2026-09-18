@@ -21,6 +21,7 @@ export type SaveData = {
 	GangId: string,
 	GangRank: string,
 	OwnedVehicles: { [string]: boolean },
+	Inventory: { [string]: number },
 	PlaytimeSeconds: number,
 	LastRaidedAt: number,
 }
@@ -56,6 +57,7 @@ function Persistence.save(player: Player)
 		GangId = state.GangId,
 		GangRank = state.GangRank,
 		OwnedVehicles = state.OwnedVehicles,
+		Inventory = state.Inventory,
 		-- Both drive anti-grief protections, so they have to survive a rejoin
 		-- or the protections can be reset at will.
 		PlaytimeSeconds = PlayerState.totalPlaytime(player),
