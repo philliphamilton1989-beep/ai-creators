@@ -27,6 +27,7 @@ local Workspace = game:GetService("Workspace")
 
 local VehicleService = require(script.Parent:WaitForChild("VehicleService"))
 local DamageService = require(script.Parent.Parent:WaitForChild("Combat"):WaitForChild("DamageService"))
+local SafeZoneService = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("SafeZoneService"))
 local VehicleConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("VehicleConfig"))
 local ArmoredVehicleConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("ArmoredVehicleConfig"))
 
@@ -261,6 +262,16 @@ function VehicleDamageService.takeDamage(model: Model, rawDamage: number, damage
 		return 0
 	end
 	if model:GetAttribute("VehicleDestroyed") == true then
+		return 0
+	end
+
+	-- A loaded van parked outside the pawn shop is the same griefing target as
+	-- the player carrying the load, and it has no combat tag of its own, so it's
+	-- protected by location alone. A protected attacker can't shoot out either.
+	if SafeZoneService.isModelInZone(model) then
+		return 0
+	end
+	if attacker and SafeZoneService.isProtected(attacker.Character) then
 		return 0
 	end
 

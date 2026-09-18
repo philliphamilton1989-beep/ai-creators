@@ -12,6 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DamageService = require(script.Parent:WaitForChild("DamageService"))
 local PlayerState = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("PlayerState"))
 local FactionService = require(script.Parent.Parent:WaitForChild("Factions"):WaitForChild("FactionService"))
+local SafeZoneService = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("SafeZoneService"))
 local GameConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("GameConfig"))
 
 local combatRemotes = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CombatRemotes")
@@ -106,6 +107,15 @@ finishRemote.OnServerInvoke = function(player: Player, targetUserId: number): (b
 	-- of revive. Two crewless players can still finish each other.
 	if FactionService.areCrewmates(player, target) then
 		return false, "CannotFinishOwnCrew"
+	end
+
+	-- Finishing bypasses processDamage entirely, so the safe zone has to be
+	-- checked again here or a protected player could still be executed where
+	-- they stand. Revive is deliberately NOT gated this way: helping someone up
+	-- inside a shop is exactly what the zone is for.
+	local targetCharacter = target.Character
+	if SafeZoneService.isProtected(targetCharacter) or SafeZoneService.isProtected(player.Character) then
+		return false, "SafeZone"
 	end
 
 	DamageService.resolveBleedout(target, targetHumanoid, false)

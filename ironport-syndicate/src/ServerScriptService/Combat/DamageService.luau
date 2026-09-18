@@ -13,6 +13,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local PlayerState = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("PlayerState"))
+local SafeZoneService = require(script.Parent.Parent:WaitForChild("Core"):WaitForChild("SafeZoneService"))
 local GameConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("GameConfig"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -158,10 +159,24 @@ function DamageService.processDamage(
 		return false -- fully absorbed by armor
 	end
 
-	-- Stamped for anything that needs to know the target is in a fight — the
-	-- Emergency Warp lockout reads this. An attribute rather than a call, so
-	-- neither module has to require the other.
-	character:SetAttribute("LastDamagedAt", os.clock())
+	-- Safe zones cut both ways: a protected target can't be shot, and a
+	-- protected attacker can't shoot out. Checked before anything is stamped,
+	-- because a blocked shot must leave NO trace. Tagging on a blocked hit would
+	-- hand an attacker a way to strip a peaceful player's protection just by
+	-- firing at them — griefing the exact people the zone exists to protect.
+	local attackerCharacter = attacker and attacker.Character
+	if SafeZoneService.isProtected(character :: Model) or SafeZoneService.isProtected(attackerCharacter) then
+		return false
+	end
+
+	-- Real exchange: both parties are now in combat. Read by the safe-zone
+	-- combat tag and the Emergency Warp lockout. Attributes rather than calls,
+	-- so neither module has to require the other.
+	local now = os.clock()
+	character:SetAttribute("LastCombatAt", now)
+	if attackerCharacter then
+		attackerCharacter:SetAttribute("LastCombatAt", now)
+	end
 
 	-- Never act on a corpse. Without this, shooting a body during the respawn
 	-- window puts the already-dead player into bleedout, which leaves IsDowned

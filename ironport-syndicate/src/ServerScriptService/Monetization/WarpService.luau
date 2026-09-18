@@ -69,7 +69,7 @@ useWarpRemote.OnServerInvoke = function(player: Player): (boolean, string)
 		return false, "PlayerUnavailable"
 	end
 
-	local lastHit = character:GetAttribute("LastDamagedAt")
+	local lastHit = character:GetAttribute("LastCombatAt")
 	if typeof(lastHit) == "number" and os.clock() - lastHit < MonetizationConfig.WarpCombatLockoutSeconds then
 		return false, "InCombat"
 	end
